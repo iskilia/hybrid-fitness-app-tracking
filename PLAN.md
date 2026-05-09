@@ -285,25 +285,3 @@ For each phase:
 4. On Coder failure: re-dispatch the same agent with the failure diagnostics, NOT a fresh agent (preserves context).
 5. At phase gate: dispatch `test-coder`. Block until green.
 6. Surface to user: phase summary, next phase plan, any spec ambiguity discovered.
-
----
-
-## Setup Commands
-
-```bash
-# Create agent definitions interactively (preferred)
-/agents
-
-# Or scaffold all at once (orchestrator may do this on first run)
-mkdir -p .claude/agents
-# then write one .md per agent above with frontmatter:
-#   name: <agent-name>
-#   description: <when-to-use>
-#   tools: <comma-list>
-#   model: sonnet | opus
-```
-
-Recommended models:
-- `orchestrator` → opus (planning + judgment)
-- All `*-coder` → sonnet (cheaper, fast, sufficient for scoped coding)
-- `test-coder` → sonnet
