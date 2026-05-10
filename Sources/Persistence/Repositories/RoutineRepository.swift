@@ -198,6 +198,35 @@ struct RoutineRepository {
         _ = try step(stmt)
     }
 
+    // MARK: - Summary (exercise + run counts for a routine)
+
+    func summary(routineID: UUID) async throws -> (exerciseCount: Int, runCount: Int) {
+        try await dbManager.read { db in
+            let rowIDStmt = try prepare(db, "SELECT id FROM routine WHERE client_uuid = ?;")
+            defer { finalize(rowIDStmt) }
+            bindUUID(rowIDStmt, 1, routineID)
+            guard try step(rowIDStmt), let rowID = columnInt(rowIDStmt, 0) else {
+                return (0, 0)
+            }
+
+            let exStmt = try prepare(db, "SELECT COUNT(*) FROM routine_exercise WHERE routine_id = ?;")
+            defer { finalize(exStmt) }
+            bindInt(exStmt, 1, rowID)
+            _ = try step(exStmt)
+            let exerciseCount = Int(sqlite3_column_int64(exStmt, 0))
+
+            let runStmt = try prepare(db, "SELECT COUNT(*) FROM routine_run WHERE routine_id = ?;")
+            defer { finalize(runStmt) }
+            bindInt(runStmt, 1, rowID)
+            _ = try step(runStmt)
+            let runCount = Int(sqlite3_column_int64(runStmt, 0))
+
+            return (exerciseCount, runCount)
+        }
+    }
+
+    // MARK: - Private helpers
+
     private func routineRowID(_ db: OpaquePointer, clientUUID: UUID) throws -> Int {
         let stmt = try prepare(db, "SELECT id FROM routine WHERE client_uuid = ?;")
         defer { finalize(stmt) }

@@ -148,9 +148,9 @@ All Phase 2 tasks dispatchable after Phase 1 gate passes.
 
 Sequential to Phase 2.
 
-- [ ] **T3.1** [S] `Router` `@Observable` with type-safe `Route` enum (`.home, .routines, .routineDetail(id), .session(id), .exerciseLibrary, .runTypes, .exerciseHistory(id), .settings`). `NavigationStack(path:)` wired in `RootView`. — *ui-shared-coder* — deps: T2.1
-- [ ] **T3.2** [P] Home screen (`screenshots/01-hybrid.png`). Greeting, week metrics (sessions / volume / distance), routine cards with `START`. — *ui-shared-coder* — deps: T3.1, T2.5, T2.2
-- [ ] **T3.3** [P] Routines screen (`screenshots/02-hybrid.png`). List, badge, last-performed, exercise/run count, `+` to create, `4 ACTIVE · MAX 10` counter. — *ui-shared-coder* — deps: T3.1, T2.2
+- [x] **T3.1** [S] `Router` `@Observable` with type-safe `Route` enum (`.home, .routines, .routineDetail(id), .session(id), .exerciseLibrary, .runTypes, .exerciseHistory(id), .settings`). `NavigationStack(path:)` wired in `RootView`. — *ui-shared-coder* — deps: T2.1
+- [x] **T3.2** [P] Home screen (`screenshots/01-hybrid.png`). Greeting, week metrics (sessions / volume / distance), routine cards with `START`. — *ui-shared-coder* — deps: T3.1, T2.5, T2.2
+- [x] **T3.3** [P] Routines screen (`screenshots/02-hybrid.png`). List, badge, last-performed, exercise/run count, `+` to create, `4 ACTIVE · MAX 10` counter. — *ui-shared-coder* — deps: T3.1, T2.2
 
 **Gate:** SwiftUI preview renders Home + Routines with seeded data. **Screenshot parity:** side-by-side compare against `screenshots/01-hybrid.png` (Home) and `screenshots/02-hybrid.png` (Routines). Layout, copy, badge colors, counters must match. Diff noted in PR; orchestrator blocks on mismatch.
 
