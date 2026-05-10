@@ -132,13 +132,13 @@ All Phase 1 tasks dispatchable simultaneously after T0.2.
 
 All Phase 2 tasks dispatchable after Phase 1 gate passes.
 
-- [ ] **T2.1** [P] `DatabaseManager` actor wrapping `OpaquePointer`. Connection lifecycle, transaction helper. — *repo-coder* — deps: T1.1, T1.4
-- [ ] **T2.2** [P] `RoutineRepository` — CRUD + 10-routine cap enforcement. — *repo-coder* — deps: T2.1
-- [ ] **T2.3** [P] `ExerciseRepository` — base + custom list, by-id, search by name. Joins `exercise_muscle`+`muscle`+`equipment`. — *repo-coder* — deps: T2.1
-- [ ] **T2.4** [P] `RunTemplateRepository` — base + custom list, intervals join. — *repo-coder* — deps: T2.1
-- [ ] **T2.5** [P] `SessionRepository` — start session, finish session, abandon, list by date range, week stats (count + tonnage + km). — *repo-coder* — deps: T2.1
-- [ ] **T2.6** [P] `SessionSetRepository` — append set, update set, delete, history-by-exercise (last 12 months), top-set-per-session (last 12). — *repo-coder* — deps: T2.1
-- [ ] **T2.7** [P] `SessionRunRepository` — append run, finish run, splits CRUD. — *repo-coder* — deps: T2.1
+- [x] **T2.1** [P] `DatabaseManager` actor wrapping `OpaquePointer`. Connection lifecycle, transaction helper. — *repo-coder* — deps: T1.1, T1.4
+- [x] **T2.2** [P] `RoutineRepository` — CRUD + 10-routine cap enforcement. — *repo-coder* — deps: T2.1
+- [x] **T2.3** [P] `ExerciseRepository` — base + custom list, by-id, search by name. Joins `exercise_muscle`+`muscle`+`equipment`. — *repo-coder* — deps: T2.1
+- [x] **T2.4** [P] `RunTemplateRepository` — base + custom list, intervals join. — *repo-coder* — deps: T2.1
+- [x] **T2.5** [P] `SessionRepository` — start session, finish session, abandon, list by date range, week stats (count + tonnage + km). — *repo-coder* — deps: T2.1
+- [x] **T2.6** [P] `SessionSetRepository` — append set, update set, delete, history-by-exercise (last 12 months), top-set-per-session (last 12). — *repo-coder* — deps: T2.1
+- [x] **T2.7** [P] `SessionRunRepository` — append run, finish run, splits CRUD. — *repo-coder* — deps: T2.1
 
 **Gate:** integration tests cover repo round-trip for each entity. CASCADE deletes verified. — *test-coder*
 
