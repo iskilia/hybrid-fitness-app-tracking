@@ -41,8 +41,11 @@ struct RootView: View {
                 }
             }
         case .session(let id):
-            Text("TODO: session(\(id))")
-                .foregroundStyle(AppColor.textPrimary)
+            // Dispatch to lift or run based on session type.
+            // TODO: run-coder — replace the Text placeholder below with RunActiveSessionView(sessionID: id)
+            if let db = dbManager {
+                SessionDispatchView(sessionID: id, dbManager: db)
+            }
         case .exerciseLibrary:
             if let db = dbManager {
                 ExerciseLibraryView(dbManager: db, onSelect: { _ in })
@@ -52,8 +55,9 @@ struct RootView: View {
                 RunTypesView(dbManager: db) { _ in }
             }
         case .exerciseHistory(let id):
-            Text("TODO: exerciseHistory(\(id))")
-                .foregroundStyle(AppColor.textPrimary)
+            if let db = dbManager {
+                ExerciseHistoryView(exerciseID: id, dbManager: db)
+            }
         case .settings:
             Text("TODO: settings")
                 .foregroundStyle(AppColor.textPrimary)

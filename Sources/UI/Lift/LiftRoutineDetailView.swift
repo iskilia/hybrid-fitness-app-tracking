@@ -66,12 +66,17 @@ private extension LiftRoutineDetailView {
     var exerciseListSection: some View {
         VStack(spacing: 0) {
             ForEach(viewModel.entries) { entry in
-                ExerciseRow(
-                    exercise: entry.exercise,
-                    equipment: entry.equipment,
-                    primaryMuscle: entry.primaryMuscle,
-                    trailingContent: AnyView(repRangeLabel(for: entry))
-                )
+                Button {
+                    router?.push(.exerciseHistory(entry.exercise.clientUUID))
+                } label: {
+                    ExerciseRow(
+                        exercise: entry.exercise,
+                        equipment: entry.equipment,
+                        primaryMuscle: entry.primaryMuscle,
+                        trailingContent: AnyView(repRangeLabel(for: entry))
+                    )
+                }
+                .buttonStyle(.plain)
                 Divider()
                     .background(AppColor.divider)
                     .padding(.leading, AppSpacing.lg + 56 + AppSpacing.md)

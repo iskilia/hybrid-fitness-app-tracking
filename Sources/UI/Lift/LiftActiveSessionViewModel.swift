@@ -1,0 +1,195 @@
+import Foundation
+import Observation
+
+// MARK: - SetRowState
+
+/// Mutable in-progress state for a single set row.
+@Observable
+@MainActor
+final class SetRowState: Identifiable {
+    let id: UUID
+    var weightText: String
+    var repsText: String
+    var rpeText: String
+    var isCompleted: Bool
+
+    /// The persisted SessionSet once written to DB (used for updates).
+    var persistedSet: SessionSet?
+
+    init(id: UUID = UUID(), weight: Double? = nil, reps: Int? = nil, rpe: Double? = nil, isCompleted: Bool = false) {
+        self.id = id
+        self.weightText = weight.map { $0.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int($0))" : String(format: "%.1f", $0) } ?? ""
+        self.repsText   = reps.map { "\($0)" } ?? ""
+        self.rpeText    = rpe.map { $0.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int($0))" : String(format: "%.1f", $0) } ?? ""
+        self.isCompleted = isCompleted
+    }
+}
+
+// MARK: - ExerciseCardState
+
+/// State for one exercise card inside an active session.
+@Observable
+@MainActor
+final class ExerciseCardState: Identifiable {
+    let id: UUID  // exercise.clientUUID
+    let exercise: Exercise
+    let routineExercise: RoutineExercise
+    var rows: [SetRowState]
+    var previousBest: String?  // e.g. "Previous: 90 KG × 5"
+
+    init(exercise: Exercise, routineExercise: RoutineExercise, rows: [SetRowState] = [], previousBest: String? = nil) {
+        self.id = exercise.clientUUID
+        self.exercise = exercise
+        self.routineExercise = routineExercise
+        self.rows = rows
+        self.previousBest = previousBest
+    }
+}
+
+// MARK: - LiftActiveSessionViewModel
+
+@Observable
+@MainActor
+final class LiftActiveSessionViewModel {
+    var session: Session?
+    var routine: Routine?
+    var cards: [ExerciseCardState] = []
+    var errorMessage: String?
+
+    private let sessionID: UUID
+    private let sessionRepo: SessionRepository
+    private let sessionSetRepo: SessionSetRepository
+    private let routineRepo: RoutineRepository
+    private let exerciseRepo: ExerciseRepository
+
+    init(sessionID: UUID, dbManager: DatabaseManager) {
+        self.sessionID = sessionID
+        self.sessionRepo     = SessionRepository(dbManager: dbManager)
+        self.sessionSetRepo  = SessionSetRepository(dbManager: dbManager)
+        self.routineRepo     = RoutineRepository(dbManager: dbManager)
+        self.exerciseRepo    = ExerciseRepository(dbManager: dbManager)
+    }
+
+    // MARK: - Load
+
+    func load() async {
+        do {
+            let s = try await sessionRepo.get(id: sessionID)
+            self.session = s
+
+            guard let s else { return }
+
+            if let routineRowID = s.routineID {
+                // Fetch all routines and find by integer ID
+                let allRoutines = try await routineRepo.list()
+                self.routine = allRoutines.first(where: { $0.id == routineRowID })
+            }
+
+            guard let routine else { return }
+
+            let routineExercises = try await routineRepo.listExercises(routineID: routine.clientUUID)
+            let allExercises     = try await exerciseRepo.listAll()
+            let exerciseByID     = Dictionary(uniqueKeysWithValues: allExercises.map { ($0.id, $0) })
+
+            var builtCards: [ExerciseCardState] = []
+            for re in routineExercises {
+                guard let exercise = exerciseByID[re.exerciseID] else { continue }
+
+                // Previous best
+                let topSets = try await sessionSetRepo.topSetPerSession(exerciseID: exercise.clientUUID, limit: 1)
+                var previousBest: String?
+                if let top = topSets.first {
+                    let wStr = top.weightKg.truncatingRemainder(dividingBy: 1) == 0
+                        ? "\(Int(top.weightKg)) KG" : String(format: "%.1f KG", top.weightKg)
+                    previousBest = "Previous: \(wStr) × \(top.reps)"
+                }
+
+                // Existing sets for this session + exercise
+                let existingSets = try await sessionSetRepo.list(sessionID: sessionID, exerciseID: exercise.clientUUID)
+                let rows: [SetRowState] = existingSets.map { ss in
+                    SetRowState(id: ss.clientUUID, weight: ss.weightKg, reps: ss.reps, rpe: ss.rpe, isCompleted: ss.completedAt != nil)
+                }
+
+                builtCards.append(ExerciseCardState(
+                    exercise: exercise,
+                    routineExercise: re,
+                    rows: rows.isEmpty ? [SetRowState()] : rows,
+                    previousBest: previousBest
+                ))
+            }
+            self.cards = builtCards
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - Add Set
+
+    func addSet(to card: ExerciseCardState) {
+        card.rows.append(SetRowState())
+    }
+
+    // MARK: - Persist Set
+
+    func persistSet(_ row: SetRowState, in card: ExerciseCardState, exerciseOrder: Int) {
+        Task {
+            guard let s = session else { return }
+            let weight = Double(row.weightText)
+            let reps   = Int(row.repsText)
+            let rpe    = Double(row.rpeText)
+            let now    = Date()
+            let setNumber = (card.rows.firstIndex(where: { $0.id == row.id }) ?? 0) + 1
+
+            if let existing = row.persistedSet {
+                let updated = SessionSet(
+                    id: existing.id,
+                    clientUUID: existing.clientUUID,
+                    sessionID: existing.sessionID,
+                    exerciseID: existing.exerciseID,
+                    exerciseOrder: exerciseOrder,
+                    setNumber: setNumber,
+                    setType: existing.setType,
+                    weightKg: weight,
+                    reps: reps,
+                    durationSecs: nil,
+                    distanceM: nil,
+                    rpe: rpe,
+                    completedAt: row.isCompleted ? now : existing.completedAt,
+                    notes: nil,
+                    updatedAt: now
+                )
+                try? await sessionSetRepo.update(updated)
+            } else {
+                let newSet = SessionSet(
+                    id: 0,
+                    clientUUID: row.id,
+                    sessionID: s.id,
+                    exerciseID: card.exercise.id,
+                    exerciseOrder: exerciseOrder,
+                    setNumber: setNumber,
+                    setType: .working,
+                    weightKg: weight,
+                    reps: reps,
+                    durationSecs: nil,
+                    distanceM: nil,
+                    rpe: rpe,
+                    completedAt: row.isCompleted ? now : nil,
+                    notes: nil,
+                    updatedAt: now
+                )
+                try? await sessionSetRepo.append(newSet)
+                row.persistedSet = newSet
+            }
+        }
+    }
+
+    // MARK: - Finish / Abandon
+
+    func finish() async {
+        try? await sessionRepo.finish(id: sessionID)
+    }
+
+    func abandon() async {
+        try? await sessionRepo.abandon(id: sessionID)
+    }
+}
