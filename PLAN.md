@@ -162,15 +162,15 @@ Two independent lanes after Phase 3 gate.
 
 #### Lift lane
 
-- [ ] **T4.L1** [P] Lift routine detail (`screenshots/03-hybrid.png`). Shows exercise rows with last-session weight × routine rep range. — *ui-lift-coder* — deps: T3.1, T2.2, T2.3, T2.6
-- [ ] **T4.L2** [P] Exercise library picker (`screenshots/05-hybrid.png`). Search, equipment filter, muscle chips. — *ui-lift-coder* — deps: T3.1, T2.3
-- [ ] **T4.L3** [P] Custom exercise editor. Name, abbrev, equipment, muscles, notes, form_link, `metric_type`. — *ui-lift-coder* — deps: T2.3
+- [x] **T4.L1** [P] Lift routine detail (`screenshots/03-hybrid.png`). Shows exercise rows with last-session weight × routine rep range. — *ui-lift-coder* — deps: T3.1, T2.2, T2.3, T2.6
+- [x] **T4.L2** [P] Exercise library picker (`screenshots/05-hybrid.png`). Search, equipment filter, muscle chips. — *ui-lift-coder* — deps: T3.1, T2.3
+- [x] **T4.L3** [P] Custom exercise editor. Name, abbrev, equipment, muscles, notes, form_link, `metric_type`. — *ui-lift-coder* — deps: T2.3
 
 #### Run lane
 
-- [ ] **T4.R1** [P] Run routine detail (`screenshots/04-hybrid.png`). Run rows with type, distance, pace, BPM range, interval description (composed from `run_interval_block`). — *ui-run-coder* — deps: T3.1, T2.2, T2.4
-- [ ] **T4.R2** [P] Run-types picker (`screenshots/06-hybrid.png`). Search, type filter. — *ui-run-coder* — deps: T3.1, T2.4
-- [ ] **T4.R3** [P] Custom run-template editor + interval block editor. — *ui-run-coder* — deps: T2.4
+- [x] **T4.R1** [P] Run routine detail (`screenshots/04-hybrid.png`). Run rows with type, distance, pace, BPM range, interval description (composed from `run_interval_block`). — *ui-run-coder* — deps: T3.1, T2.2, T2.4
+- [x] **T4.R2** [P] Run-types picker (`screenshots/06-hybrid.png`). Search, type filter. — *ui-run-coder* — deps: T3.1, T2.4
+- [x] **T4.R3** [P] Custom run-template editor + interval block editor. — *ui-run-coder* — deps: T2.4
 
 **Gate:** preview renders both detail screens. Picker insert flow round-trips through repo. **Screenshot parity:** compare against `screenshots/03-hybrid.png` (lift detail), `screenshots/04-hybrid.png` (run detail), `screenshots/05-hybrid.png` (exercise picker), `screenshots/06-hybrid.png` (run-types picker). Verify row composition, filter chips, search bar, abbreviations.
 

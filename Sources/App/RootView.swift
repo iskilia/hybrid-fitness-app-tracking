@@ -31,18 +31,26 @@ struct RootView: View {
             if let db = dbManager {
                 RoutinesView(viewModel: RoutinesViewModel(dbManager: db))
             }
-        case .routineDetail(let id):
-            Text("TODO: routineDetail(\(id))")
-                .foregroundStyle(AppColor.textPrimary)
+        case .routineDetail(let id, let type):
+            if let db = dbManager {
+                switch type {
+                case .lift, .mixed:
+                    LiftRoutineDetailView(routineID: id, dbManager: db)
+                case .run:
+                    RunRoutineDetailView(routineID: id, dbManager: db)
+                }
+            }
         case .session(let id):
             Text("TODO: session(\(id))")
                 .foregroundStyle(AppColor.textPrimary)
         case .exerciseLibrary:
-            Text("TODO: exerciseLibrary")
-                .foregroundStyle(AppColor.textPrimary)
+            if let db = dbManager {
+                ExerciseLibraryView(dbManager: db, onSelect: { _ in })
+            }
         case .runTypes:
-            Text("TODO: runTypes")
-                .foregroundStyle(AppColor.textPrimary)
+            if let db = dbManager {
+                RunTypesView(dbManager: db) { _ in }
+            }
         case .exerciseHistory(let id):
             Text("TODO: exerciseHistory(\(id))")
                 .foregroundStyle(AppColor.textPrimary)

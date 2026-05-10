@@ -1,0 +1,211 @@
+import SwiftUI
+
+// MARK: - RunTypesView
+
+struct RunTypesView: View {
+    @State private var viewModel: RunTypesViewModel
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.router) private var router
+    let onSelect: (RunTemplate) -> Void
+
+    init(dbManager: DatabaseManager, onSelect: @escaping (RunTemplate) -> Void) {
+        _viewModel = State(initialValue: RunTypesViewModel(dbManager: dbManager))
+        self.onSelect = onSelect
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                searchBar
+                    .padding(.horizontal, AppSpacing.lg)
+                    .padding(.top, AppSpacing.md)
+                typeFilterChips
+                    .padding(.horizontal, AppSpacing.lg)
+                    .padding(.vertical, AppSpacing.sm)
+                Divider().foregroundStyle(AppColor.divider)
+                templateList
+            }
+            .background(AppColor.background)
+            .navigationTitle("RUN TYPES")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { toolbarContent }
+            .task { await viewModel.load() }
+        }
+    }
+
+    // MARK: - Search bar
+
+    private var searchBar: some View {
+        HStack(spacing: AppSpacing.sm) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(AppColor.textSecondary)
+            TextField("Search run types...", text: $viewModel.searchText)
+                .font(AppFont.body)
+                .foregroundStyle(AppColor.textPrimary)
+        }
+        .padding(AppSpacing.md)
+        .background(AppColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
+    }
+
+    // MARK: - Type filter chips
+
+    private var typeFilterChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: AppSpacing.sm) {
+                ForEach(RunType.allCases, id: \.self) { type in
+                    typeChip(type)
+                }
+            }
+        }
+    }
+
+    private func typeChip(_ type: RunType) -> some View {
+        let isSelected = viewModel.selectedType == type
+        return Button {
+            viewModel.toggleTypeFilter(type)
+        } label: {
+            Text(type.filterLabel)
+                .font(AppFont.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(isSelected ? .white : AppColor.accentDark)
+                .padding(.horizontal, AppSpacing.md)
+                .padding(.vertical, AppSpacing.xs)
+                .background(isSelected ? AppColor.accentDark : AppColor.accentMuted)
+                .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
+        }
+    }
+
+    // MARK: - Template list
+
+    private var templateList: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(viewModel.filteredTemplates) { template in
+                    RunTypeRow(template: template) {
+                        onSelect(template)
+                        dismiss()
+                    }
+                    Divider()
+                        .foregroundStyle(AppColor.divider)
+                        .padding(.leading, 60 + AppSpacing.lg)
+                }
+                addCustomButton
+                    .padding(AppSpacing.lg)
+            }
+        }
+    }
+
+    private var addCustomButton: some View {
+        Button {
+            router?.push(.runTypes)
+        } label: {
+            Text("+ ADD CUSTOM RUN TYPE")
+                .font(AppFont.headline)
+                .foregroundStyle(AppColor.accent)
+                .frame(maxWidth: .infinity)
+                .padding(AppSpacing.lg)
+                .background(AppColor.surface)
+                .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
+        }
+    }
+
+    // MARK: - Toolbar
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button { dismiss() } label: {
+                Image(systemName: "xmark")
+                    .foregroundStyle(AppColor.textPrimary)
+            }
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Button {
+                router?.push(.runTypes)
+            } label: {
+                Label("NEW", systemImage: "plus")
+                    .font(AppFont.headline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, AppSpacing.md)
+                    .padding(.vertical, AppSpacing.xs)
+                    .background(AppColor.accent)
+                    .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
+            }
+        }
+    }
+}
+
+// MARK: - RunTypeRow
+
+private struct RunTypeRow: View {
+    let template: RunTemplate
+    let onAdd: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: AppSpacing.md) {
+            Text(template.runType.abbreviation)
+                .font(AppFont.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(AppColor.accentDark)
+                .frame(width: 44, height: 44)
+                .background(AppColor.accentMuted)
+                .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
+            VStack(alignment: .leading, spacing: AppSpacing.xxs) {
+                Text(template.name)
+                    .font(AppFont.bodyBold)
+                    .foregroundStyle(AppColor.textPrimary)
+                Text(metaLine)
+                    .font(AppFont.captionMono)
+                    .foregroundStyle(AppColor.textSecondary)
+            }
+            Spacer()
+            Button(action: onAdd) {
+                Image(systemName: "plus")
+                    .foregroundStyle(.white)
+                    .frame(width: 28, height: 28)
+                    .background(AppColor.textPrimary)
+                    .clipShape(Circle())
+            }
+        }
+        .padding(.horizontal, AppSpacing.lg)
+        .padding(.vertical, AppSpacing.md)
+    }
+
+    private var metaLine: String {
+        var parts: [String] = [template.runType.rawValue]
+        if let km = template.targetTotalDistanceKm {
+            let s = km.truncatingRemainder(dividingBy: 1) == 0
+                ? "\(Int(km)).0 KM" : String(format: "%.1f KM", km)
+            parts.append(s)
+        }
+        if let paceMin = template.targetPaceSecsMin {
+            let m = paceMin / 60; let s = paceMin % 60
+            parts.append(String(format: "%d:%02d /KM", m, s))
+        }
+        if let bMin = template.hrBpmMin, let bMax = template.hrBpmMax {
+            parts.append("\(bMin)\u{2013}\(bMax) BPM")
+        }
+        return parts.joined(separator: " \u{B7} ")
+    }
+}
+
+// MARK: - RunType helpers
+
+extension RunType: CaseIterable {
+    public static var allCases: [RunType] {
+        [.steady, .threshold, .endurance, .intervals, .fartlek, .recovery]
+    }
+
+    var filterLabel: String {
+        switch self {
+        case .steady:    return "EASY"
+        case .threshold: return "TEMPO"
+        case .endurance: return "LONG"
+        case .intervals: return "INTERVAL"
+        case .fartlek:   return "FARTLEK"
+        case .recovery:  return "RECOVERY"
+        }
+    }
+}

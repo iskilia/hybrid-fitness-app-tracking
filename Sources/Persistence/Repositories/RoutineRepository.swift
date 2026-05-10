@@ -198,6 +198,50 @@ struct RoutineRepository {
         _ = try step(stmt)
     }
 
+    // MARK: - List exercises for a routine (ordered by sort_order)
+
+    func listExercises(routineID: UUID) async throws -> [RoutineExercise] {
+        try await dbManager.read { db in
+            let rowIDStmt = try prepare(db, "SELECT id FROM routine WHERE client_uuid = ?;")
+            defer { finalize(rowIDStmt) }
+            bindUUID(rowIDStmt, 1, routineID)
+            guard try step(rowIDStmt), let rowID = columnInt(rowIDStmt, 0) else { return [] }
+
+            let sql = """
+                SELECT id, client_uuid, routine_id, exercise_id, sort_order,
+                       target_sets, target_rep_min, target_rep_max, target_rpe, notes, updated_at
+                FROM routine_exercise
+                WHERE routine_id = ?
+                ORDER BY sort_order ASC;
+                """
+            let stmt = try prepare(db, sql)
+            defer { finalize(stmt) }
+            bindInt(stmt, 1, rowID)
+            var result: [RoutineExercise] = []
+            while try step(stmt) {
+                guard
+                    let uuidStr = columnText(stmt, 1),
+                    let uuid = UUID(uuidString: uuidStr),
+                    let updatedAt = columnDate(stmt, 10)
+                else { continue }
+                result.append(RoutineExercise(
+                    id: Int(sqlite3_column_int64(stmt, 0)),
+                    clientUUID: uuid,
+                    routineID: columnInt(stmt, 2) ?? 0,
+                    exerciseID: columnInt(stmt, 3) ?? 0,
+                    sortOrder: columnInt(stmt, 4) ?? 0,
+                    targetSets: columnInt(stmt, 5),
+                    targetRepMin: columnInt(stmt, 6),
+                    targetRepMax: columnInt(stmt, 7),
+                    targetRPE: columnDouble(stmt, 8),
+                    notes: columnText(stmt, 9),
+                    updatedAt: updatedAt
+                ))
+            }
+            return result
+        }
+    }
+
     // MARK: - Summary (exercise + run counts for a routine)
 
     func summary(routineID: UUID) async throws -> (exerciseCount: Int, runCount: Int) {

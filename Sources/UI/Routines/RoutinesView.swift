@@ -45,7 +45,7 @@ struct RoutinesView: View {
                 routine: routine,
                 lastPerformedText: viewModel.lastPerformedText(for: routine),
                 subtitleText: viewModel.subtitleText(for: routine),
-                onStart: { router?.push(.routineDetail(routine.clientUUID)) }
+                onStart: { router?.push(.routineDetail(routine.clientUUID, routine.type)) }
             )
         }
     }
@@ -56,7 +56,7 @@ struct RoutinesView: View {
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
             Button {
-                router?.push(.routineDetail(UUID()))
+                router?.push(.routineDetail(UUID(), .lift))
             } label: {
                 Image(systemName: "plus")
                     .foregroundStyle(AppColor.textPrimary)

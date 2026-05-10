@@ -58,7 +58,7 @@ struct HomeView: View {
                     routine: routine,
                     lastPerformedText: viewModel.lastPerformedText(for: routine),
                     subtitleText: viewModel.subtitleText(for: routine),
-                    onStart: { router?.push(.routineDetail(routine.clientUUID)) }
+                    onStart: { router?.push(.routineDetail(routine.clientUUID, routine.type)) }
                 )
             }
         }

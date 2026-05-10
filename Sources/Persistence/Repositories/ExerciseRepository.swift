@@ -39,6 +39,50 @@ struct ExerciseRepository {
         }
     }
 
+    // MARK: - Lookup lists
+
+    func listAllEquipment() async throws -> [Equipment] {
+        try await dbManager.read { db in
+            let stmt = try prepare(db, "SELECT id, code, display_name FROM equipment ORDER BY display_name ASC;")
+            defer { finalize(stmt) }
+            var result: [Equipment] = []
+            while try step(stmt) {
+                guard
+                    let code = columnText(stmt, 1),
+                    let displayName = columnText(stmt, 2)
+                else { continue }
+                result.append(Equipment(
+                    id: Int(sqlite3_column_int64(stmt, 0)),
+                    code: code,
+                    displayName: displayName
+                ))
+            }
+            return result
+        }
+    }
+
+    func listAllMuscles() async throws -> [Muscle] {
+        try await dbManager.read { db in
+            let stmt = try prepare(db, "SELECT id, code, display_name, group_name FROM muscle ORDER BY display_name ASC;")
+            defer { finalize(stmt) }
+            var result: [Muscle] = []
+            while try step(stmt) {
+                guard
+                    let code = columnText(stmt, 1),
+                    let displayName = columnText(stmt, 2),
+                    let groupName = columnText(stmt, 3)
+                else { continue }
+                result.append(Muscle(
+                    id: Int(sqlite3_column_int64(stmt, 0)),
+                    code: code,
+                    displayName: displayName,
+                    groupName: groupName
+                ))
+            }
+            return result
+        }
+    }
+
     // MARK: - Search
 
     func search(query: String) async throws -> [Exercise] {

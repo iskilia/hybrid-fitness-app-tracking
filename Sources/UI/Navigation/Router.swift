@@ -6,7 +6,9 @@ import SwiftUI
 enum Route: Hashable, Sendable {
     case home
     case routines
-    case routineDetail(UUID)
+    /// Includes the routine's WorkoutType so RootView can dispatch to the correct lane
+    /// without an async fetch. Update callers to pass `routine.type`.
+    case routineDetail(UUID, WorkoutType)
     case session(UUID)
     case exerciseLibrary
     case runTypes
