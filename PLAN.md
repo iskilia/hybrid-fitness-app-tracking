@@ -118,11 +118,11 @@ Create the following agents in `.claude/agents/` (or via `/agents`). Each is sin
 
 All Phase 1 tasks dispatchable simultaneously after T0.2.
 
-- [ ] **T1.1** [P] DDL implementation. Translate `SCHEMA.md` DDL block into `Sources/Persistence/Schema/Schema.swift`. Function `applySchema(_ db: OpaquePointer)` runs `CREATE TABLE`/`CREATE INDEX` statements idempotently. Enable `PRAGMA foreign_keys = ON`, `PRAGMA journal_mode = WAL`. — *db-coder* — deps: T0.2
-- [ ] **T1.2** [P] Migration runner. `Sources/Persistence/Migrations/Migrator.swift` reads `schema_meta.version`, applies migrations in order. V1 baseline = version 1. — *db-coder* — deps: T0.2
-- [ ] **T1.3** [P] Seed data. `Sources/Persistence/Seed/SeedData.swift` populates `equipment`, `muscle`, `tag` lookups + ~30 base exercises (Bench Press, Back Squat, Deadlift, OHP, Bent-over Row, Pull-up, RDL, Incline DB Press, …) + ~6 base run templates (Easy Run, Tempo Run, Long Run, 5×800m, Fartlek 30, Recovery). Reference screenshots 5–6 for canonical names + abbreviations. — *db-coder* — deps: T0.2
-- [ ] **T1.4** [P] Domain model structs. Swift `struct` per table in `SCHEMA.md`. `Codable` conformance. UUID generation helper. — *models-coder* — deps: T0.2
-- [ ] **T1.5** [P] Design-token module: `Sources/UI/Shared/DesignSystem/{Colors,Typography,Spacing}.swift`. Match screenshot palette (cream background, accent orange `START`, charcoal text, badge oranges). — *ui-shared-coder* — deps: T0.2
+- [x] **T1.1** [P] DDL implementation. Translate `SCHEMA.md` DDL block into `Sources/Persistence/Schema/Schema.swift`. Function `applySchema(_ db: OpaquePointer)` runs `CREATE TABLE`/`CREATE INDEX` statements idempotently. Enable `PRAGMA foreign_keys = ON`, `PRAGMA journal_mode = WAL`. — *db-coder* — deps: T0.2
+- [x] **T1.2** [P] Migration runner. `Sources/Persistence/Migrations/Migrator.swift` reads `schema_meta.version`, applies migrations in order. V1 baseline = version 1. — *db-coder* — deps: T0.2
+- [x] **T1.3** [P] Seed data. `Sources/Persistence/Seed/SeedData.swift` populates `equipment`, `muscle`, `tag` lookups + ~30 base exercises (Bench Press, Back Squat, Deadlift, OHP, Bent-over Row, Pull-up, RDL, Incline DB Press, …) + ~6 base run templates (Easy Run, Tempo Run, Long Run, 5×800m, Fartlek 30, Recovery). Reference screenshots 5–6 for canonical names + abbreviations. — *db-coder* — deps: T0.2
+- [x] **T1.4** [P] Domain model structs. Swift `struct` per table in `SCHEMA.md`. `Codable` conformance. UUID generation helper. — *models-coder* — deps: T0.2
+- [x] **T1.5** [P] Design-token module: `Sources/UI/Shared/DesignSystem/{Colors,Typography,Spacing}.swift`. Match screenshot palette (cream background, accent orange `START`, charcoal text, badge oranges). — *ui-shared-coder* — deps: T0.2
 
 **Gate:** unit test creates in-memory DB, applies schema, inserts seed, queries each table successfully. — *test-coder*
 
