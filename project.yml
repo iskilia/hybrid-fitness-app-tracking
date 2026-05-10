@@ -1,0 +1,67 @@
+name: Hybrid
+options:
+  bundleIdPrefix: com.hybrid
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    SWIFT_UPCOMING_FEATURE_STRICT_CONCURRENCY: YES
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+    CODE_SIGNING_REQUIRED: NO
+    CODE_SIGNING_ALLOWED: NO
+targets:
+  Hybrid:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Sources
+      - path: Resources
+        optional: true
+    info:
+      path: Sources/App/Info.plist
+      properties:
+        CFBundleDisplayName: Hybrid
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIRequiredDeviceCapabilities:
+          - arm64
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.hybrid.Hybrid
+        TARGETED_DEVICE_FAMILY: "1"
+        ENABLE_PREVIEWS: YES
+        GENERATE_INFOPLIST_FILE: NO
+  HybridTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Tests/HybridTests
+    dependencies:
+      - target: Hybrid
+    settings:
+      base:
+        BUNDLE_LOADER: $(TEST_HOST)
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Hybrid.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Hybrid
+schemes:
+  Hybrid:
+    build:
+      targets:
+        Hybrid: all
+        HybridTests: [test]
+    test:
+      targets:
+        - HybridTests
+    run:
+      config: Debug
+    archive:
+      config: Release

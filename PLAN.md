@@ -107,8 +107,8 @@ Create the following agents in `.claude/agents/` (or via `/agents`). Each is sin
 
 ### Phase 0 — Bootstrap (orchestrator runs solo)
 
-- [ ] **T0.1** [S] Create Xcode project `Hybrid` (iOS 17 minimum, SwiftUI lifecycle, Swift 6 strict concurrency). Folder layout: `Sources/{Persistence,Domain,UI,Export}/`, `Tests/`. Add SQLite as `import SQLite3`. — *orchestrator*
-- [ ] **T0.2** [S] Commit baseline. Tag `v0.0-bootstrap`. — *orchestrator*
+- [x] **T0.1** [S] Create Xcode project `Hybrid` (iOS 17 minimum, SwiftUI lifecycle, Swift 6 strict concurrency). Folder layout: `Sources/{Persistence,Domain,UI,Export}/`, `Tests/`. Add SQLite as `import SQLite3`. — *orchestrator*
+- [x] **T0.2** [S] Commit baseline. Tag `v0.0-bootstrap`. — *orchestrator*
 
 **Gate:** project builds. `xcodebuild build` exits 0.
 
