@@ -180,13 +180,13 @@ Two independent lanes after Phase 3 gate.
 
 #### Lift lane
 
-- [~] **T5.L1** [P] Active lift session view. Per-exercise card, set rows (W / 1 / 2 / 3 …), weight + reps + RPE input, "previous" hint from last session. Auto-creates `session` row on entry, persists each set on commit. Pause / finish / abandon. — *ui-lift-coder* — deps: T4.L1, T2.5, T2.6
-- [~] **T5.L2** [P] Exercise history screen (`screenshots/09-hybrid.png`). Top-set chart (last 12 sessions), session list. — *ui-lift-coder* — deps: T2.6
+- [x] **T5.L1** [P] Active lift session view. Per-exercise card, set rows (W / 1 / 2 / 3 …), weight + reps + RPE input, "previous" hint from last session. Auto-creates `session` row on entry, persists each set on commit. Pause / finish / abandon. — *ui-lift-coder* — deps: T4.L1, T2.5, T2.6
+- [x] **T5.L2** [P] Exercise history screen (`screenshots/09-hybrid.png`). Top-set chart (last 12 sessions), session list. — *ui-lift-coder* — deps: T2.6
 
 #### Run lane
 
-- [~] **T5.R1** [P] Active run session view (`screenshots/08-hybrid.png`). Timer, distance, pace, HR vs target. Manual entry path (V1) + structured slot for V2 wearable feed. — *ui-run-coder* — deps: T4.R1, T2.5, T2.7
-- [~] **T5.R2** [P] Post-run summary + persist `session_run` (+ optional `session_run_split` rows). — *ui-run-coder* — deps: T5.R1
+- [x] **T5.R1** [P] Active run session view (`screenshots/08-hybrid.png`). Timer, distance, pace, HR vs target. Manual entry path (V1) + structured slot for V2 wearable feed. — *ui-run-coder* — deps: T4.R1, T2.5, T2.7
+- [x] **T5.R2** [P] Post-run summary + persist `session_run` (+ optional `session_run_split` rows). — *ui-run-coder* — deps: T5.R1
 
 **Gate:** end-to-end test: create routine → start → log sets/run → finish → appears in history with correct aggregates. **Screenshot parity:** compare active lift session, `screenshots/08-hybrid.png` (active run), `screenshots/09-hybrid.png` (exercise history). Verify timer layout, set-row format (W / 1 / 2 / 3), HR-vs-target chip, top-set chart axes.
 
