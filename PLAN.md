@@ -194,9 +194,9 @@ Two independent lanes after Phase 3 gate.
 
 ### Phase 6 — Export + Settings
 
-- [ ] **T6.1** [P] CSV exporter. One file per table OR a flat denormalized session-set CSV. Decision recorded in code comment + this PLAN. — *export-coder* — deps: Phase 5 gate
-- [ ] **T6.2** [P] JSON exporter. Mirrors `SCHEMA.md` table structure. — *export-coder* — deps: Phase 5 gate
-- [ ] **T6.3** [P] Settings screen (`screenshots/10-hybrid.png`). DB size readout, session count, `EXPORT` buttons, units toggle (kg/lb, km/mi), bodyweight input. — *export-coder* — deps: T6.1, T6.2, T2.5
+- [x] **T6.1** [P] CSV exporter. Decision: one file per table (mirrors JSON + SCHEMA, easier round-trip). Recorded in `Sources/Export/CSVExporter.swift`. — *export-coder* — deps: Phase 5 gate
+- [x] **T6.2** [P] JSON exporter. Mirrors `SCHEMA.md` table structure. — *export-coder* — deps: Phase 5 gate
+- [x] **T6.3** [P] Settings screen (`screenshots/10-hybrid.png`). DB size readout, session count, `EXPORT` buttons, units toggle (kg/lb, km/mi), bodyweight input. — *export-coder* — deps: T6.1, T6.2, T2.5
 
 **Gate:** export round-trip — exported JSON re-imports into a fresh DB and produces byte-identical re-export. **Screenshot parity:** compare Settings against `screenshots/10-hybrid.png`. Verify footer format (`412 SESSIONS · 8.4 MB · EXPORT`), units toggle, bodyweight input.
 

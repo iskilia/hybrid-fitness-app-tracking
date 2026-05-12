@@ -59,8 +59,9 @@ struct RootView: View {
                 ExerciseHistoryView(exerciseID: id, dbManager: db)
             }
         case .settings:
-            Text("TODO: settings")
-                .foregroundStyle(AppColor.textPrimary)
+            if let db = dbManager {
+                SettingsView(dbManager: db)
+            }
         }
     }
 }

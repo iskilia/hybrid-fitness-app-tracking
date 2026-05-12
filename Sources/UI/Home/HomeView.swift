@@ -80,6 +80,14 @@ struct HomeView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button {
+                router?.push(.settings)
+            } label: {
+                Image(systemName: "gearshape")
+                    .foregroundStyle(AppColor.textPrimary)
+            }
+        }
         ToolbarItem(placement: .topBarTrailing) {
             Button {
                 router?.push(.routines)
