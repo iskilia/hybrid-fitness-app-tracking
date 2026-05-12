@@ -5,6 +5,7 @@ import Foundation
 /// Abstracts the source of live run metrics.
 /// V1: manual entry (user bumps values via UI controls).
 /// V2: HealthKit / WatchConnectivity feed implements this protocol.
+@MainActor
 protocol RunSessionDataSource: AnyObject {
     /// Total distance covered, in kilometres.
     var currentDistanceKm: Double { get set }

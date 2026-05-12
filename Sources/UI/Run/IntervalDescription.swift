@@ -63,6 +63,10 @@ enum IntervalDescription {
         return String(format: "%d:%02d", m, s)
     }
 
+    static func short(for block: RunIntervalBlock) -> String {
+        blockShortLabel(block)
+    }
+
     private static func blockShortLabel(_ block: RunIntervalBlock) -> String {
         let dist = distanceLabel(block)
         let suffix: String
