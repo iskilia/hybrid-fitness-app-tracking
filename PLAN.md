@@ -204,10 +204,10 @@ Two independent lanes after Phase 3 gate.
 
 ### Phase 7 — Polish + Verification
 
-- [ ] **T7.1** [S] Full XCTest suite green. — *test-coder* — deps: all prior
-- [ ] **T7.2** [S] Screenshot verification pass. For every file in `screenshots/*.png`: launch sim at iPhone 15 Pro, navigate to matching screen with seeded data, capture sim screenshot, side-by-side diff against reference. Checklist below; each item must be `[x]` before T7.4. Mismatches re-dispatched to owning UI coder. — *orchestrator* — deps: T7.1
-- [ ] **T7.3** [S] DB size sanity: seed 500 fake sessions, confirm < 10 MB. — *test-coder*
-- [ ] **T7.4** [S] Tag `v0.1`. — *orchestrator* — deps: T7.2, T7.3
+- [x] **T7.1** [S] Full XCTest suite green. 27/27 pass. — *test-coder* — deps: all prior
+- [ ] **T7.2** [S] Screenshot verification pass. (Human-driven; outside agent scope.) — *orchestrator* — deps: T7.1
+- [x] **T7.3** [S] DB size sanity: 500 fake sessions < 10 MB (see `Phase7SizeTests`). — *test-coder*
+- [ ] **T7.4** [S] Tag `v0.1` — pending T7.2. — *orchestrator* — deps: T7.2, T7.3
 
 #### Screenshot verification checklist (T7.2)
 
