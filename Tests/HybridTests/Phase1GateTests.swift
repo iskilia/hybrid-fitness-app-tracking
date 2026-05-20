@@ -132,6 +132,152 @@ final class Phase1GateTests: XCTestCase {
         }
     }
 
+    // MARK: - V2 gate tests
+
+    /// V2 migration must add both target_duration_secs_{min,max} INTEGER nullable
+    /// columns to routine_exercise.
+    func testV2MigrationAddsTargetDurationColumns() throws {
+        let db = try unwrapDB()
+        try migrate(db)
+
+        var stmt: OpaquePointer?
+        let prep = sqlite3_prepare_v2(db, "PRAGMA table_info(routine_exercise);", -1, &stmt, nil)
+        XCTAssertEqual(prep, SQLITE_OK, "PRAGMA table_info(routine_exercise) failed to prepare")
+        defer { sqlite3_finalize(stmt) }
+
+        // PRAGMA table_info columns: cid, name, type, notnull, dflt_value, pk
+        var minCol: (type: String, notnull: Int)?
+        var maxCol: (type: String, notnull: Int)?
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            let name = columnText(stmt!, 1)
+            let type = columnText(stmt!, 2)
+            let notnull = Int(sqlite3_column_int64(stmt!, 3))
+            if name == "target_duration_secs_min" {
+                minCol = (type, notnull)
+            } else if name == "target_duration_secs_max" {
+                maxCol = (type, notnull)
+            }
+        }
+
+        XCTAssertNotNil(minCol, "routine_exercise missing target_duration_secs_min column after V2 migrate")
+        XCTAssertNotNil(maxCol, "routine_exercise missing target_duration_secs_max column after V2 migrate")
+        XCTAssertEqual(minCol?.type.uppercased(), "INTEGER",
+                       "target_duration_secs_min should be INTEGER; got '\(minCol?.type ?? "")'")
+        XCTAssertEqual(maxCol?.type.uppercased(), "INTEGER",
+                       "target_duration_secs_max should be INTEGER; got '\(maxCol?.type ?? "")'")
+        XCTAssertEqual(minCol?.notnull, 0, "target_duration_secs_min should be nullable (notnull=0)")
+        XCTAssertEqual(maxCol?.notnull, 0, "target_duration_secs_max should be nullable (notnull=0)")
+    }
+
+    /// V2 migration must create idx_session_routine_finished on the session table.
+    func testV2MigrationCreatesSessionRoutineFinishedIndex() throws {
+        let db = try unwrapDB()
+        try migrate(db)
+
+        let sql = """
+            SELECT tbl_name FROM sqlite_master
+            WHERE type = 'index' AND name = 'idx_session_routine_finished';
+            """
+        let tbl = try scalarText(db, sql)
+        XCTAssertEqual(tbl, "session",
+                       "idx_session_routine_finished should exist on table 'session'; got '\(tbl ?? "nil")'")
+    }
+
+    /// Round-trip a routine_exercise row with timed-hold targets via raw SQL,
+    /// since RoutineRepository doesn't bind these columns yet (TV2.1 pending).
+    func testRoutineExerciseRoundTripsTimedTargetsViaRawSQL() throws {
+        let db = try unwrapDB()
+        try migrate(db)
+        try seedIfEmpty(db)
+
+        // Look up a seeded TIME exercise by name (Plank is at id 29 per SeedData).
+        let exerciseID = try scalarInt(db,
+            "SELECT id FROM exercise WHERE name = 'Plank' AND metric_type = 'TIME' AND is_custom = 0;")
+        XCTAssertNotNil(exerciseID, "Seeded 'Plank' TIME exercise not found")
+        guard let exID = exerciseID else { return }
+
+        let now = Int(Date().timeIntervalSince1970)
+
+        // Insert a routine row.
+        let routineSQL = """
+            INSERT INTO routine (client_uuid, name, type, sort_order, created_at, updated_at)
+            VALUES ('11111111-1111-1111-1111-111111111111', 'V2 Test Routine', 'LIFT', 0, \(now), \(now));
+            """
+        XCTAssertNoThrow(try exec(db: db, sql: routineSQL), "Failed to insert routine row")
+        let routineID = Int(sqlite3_last_insert_rowid(db))
+        XCTAssertGreaterThan(routineID, 0, "Inserted routine row has invalid rowid")
+
+        // Insert routine_exercise via raw SQL binding the new columns.
+        var stmt: OpaquePointer?
+        let insertSQL = """
+            INSERT INTO routine_exercise
+                (client_uuid, routine_id, exercise_id, sort_order, target_sets,
+                 target_duration_secs_min, target_duration_secs_max, updated_at)
+            VALUES (?, ?, ?, 0, 3, ?, ?, ?);
+            """
+        let prep = sqlite3_prepare_v2(db, insertSQL, -1, &stmt, nil)
+        XCTAssertEqual(prep, SQLITE_OK, "prepare for routine_exercise insert failed: \(String(cString: sqlite3_errmsg(db)))")
+        sqlite3_bind_text(stmt, 1, ("22222222-2222-2222-2222-222222222222" as NSString).utf8String, -1, nil)
+        sqlite3_bind_int64(stmt, 2, Int64(routineID))
+        sqlite3_bind_int64(stmt, 3, Int64(exID))
+        sqlite3_bind_int64(stmt, 4, 30)
+        sqlite3_bind_int64(stmt, 5, 45)
+        sqlite3_bind_int64(stmt, 6, Int64(now))
+        let stepRC = sqlite3_step(stmt)
+        XCTAssertEqual(stepRC, SQLITE_DONE,
+                       "routine_exercise insert step failed: \(String(cString: sqlite3_errmsg(db)))")
+        sqlite3_finalize(stmt)
+
+        // SELECT it back.
+        var selStmt: OpaquePointer?
+        let selectSQL = """
+            SELECT target_duration_secs_min, target_duration_secs_max
+            FROM routine_exercise
+            WHERE routine_id = ? AND exercise_id = ?;
+            """
+        XCTAssertEqual(sqlite3_prepare_v2(db, selectSQL, -1, &selStmt, nil), SQLITE_OK,
+                       "prepare for routine_exercise select failed")
+        sqlite3_bind_int64(selStmt, 1, Int64(routineID))
+        sqlite3_bind_int64(selStmt, 2, Int64(exID))
+        XCTAssertEqual(sqlite3_step(selStmt), SQLITE_ROW, "routine_exercise round-trip select returned no row")
+        let minSecs = Int(sqlite3_column_int64(selStmt, 0))
+        let maxSecs = Int(sqlite3_column_int64(selStmt, 1))
+        sqlite3_finalize(selStmt)
+
+        XCTAssertEqual(minSecs, 30, "target_duration_secs_min round-trip mismatch")
+        XCTAssertEqual(maxSecs, 45, "target_duration_secs_max round-trip mismatch")
+    }
+
+    /// Seed must include exactly 5 timed-hold exercises (TIME, non-custom)
+    /// with the expected names: Wall Sit, Plank, Side Plank, Dead Hang, L-Sit.
+    func testSeedHasFiveTimedHolds() throws {
+        let db = try unwrapDB()
+        try migrate(db)
+        try seedIfEmpty(db)
+
+        let count = try scalarInt(db,
+            "SELECT COUNT(*) FROM exercise WHERE metric_type = 'TIME' AND is_custom = 0;")
+        XCTAssertEqual(count, 5,
+                       "Expected exactly 5 seeded TIME / non-custom exercises; got \(count ?? -1)")
+
+        // Collect names of all TIME exercises and assert each expected name is present.
+        var stmt: OpaquePointer?
+        let prep = sqlite3_prepare_v2(db,
+            "SELECT name FROM exercise WHERE metric_type = 'TIME';", -1, &stmt, nil)
+        XCTAssertEqual(prep, SQLITE_OK, "prepare for TIME exercise names failed")
+        defer { sqlite3_finalize(stmt) }
+
+        var names: Set<String> = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            names.insert(columnText(stmt!, 0))
+        }
+
+        for expected in ["Wall Sit", "Plank", "Side Plank", "Dead Hang", "L-Sit"] {
+            XCTAssertTrue(names.contains(expected),
+                          "Expected timed-hold '\(expected)' not found in seed; got names: \(names)")
+        }
+    }
+
     // MARK: - Helpers
 
     private func unwrapDB() throws -> OpaquePointer {

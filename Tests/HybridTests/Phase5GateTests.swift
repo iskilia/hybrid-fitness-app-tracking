@@ -56,7 +56,8 @@ final class Phase5GateTests: XCTestCase {
             id: 0, clientUUID: UUID(),
             routineID: routineRowID, exerciseID: benchRowID, sortOrder: 0,
             targetSets: 3, targetRepMin: 5, targetRepMax: 8,
-            targetRPE: 8.0, notes: nil, updatedAt: now
+            targetRPE: 8.0, targetDurationSecsMin: nil, targetDurationSecsMax: nil,
+            notes: nil, updatedAt: now
         )
         try await routines.update(routine, exerciseEntries: [entry], runEntries: [])
 

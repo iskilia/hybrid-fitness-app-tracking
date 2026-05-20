@@ -83,6 +83,8 @@ final class Phase2RepositoryTests: XCTestCase {
             targetRepMin: 5,
             targetRepMax: 8,
             targetRPE: 8.0,
+            targetDurationSecsMin: nil,
+            targetDurationSecsMax: nil,
             notes: nil,
             updatedAt: now
         )
@@ -602,7 +604,8 @@ final class Phase2RepositoryTests: XCTestCase {
             id: 0, clientUUID: UUID(),
             routineID: routineRowID, exerciseID: 1, sortOrder: 0,
             targetSets: 3, targetRepMin: 5, targetRepMax: 8,
-            targetRPE: nil, notes: nil, updatedAt: now
+            targetRPE: nil, targetDurationSecsMin: nil, targetDurationSecsMax: nil,
+            notes: nil, updatedAt: now
         )
         let runEntry = RoutineRun(
             id: 0, clientUUID: UUID(),

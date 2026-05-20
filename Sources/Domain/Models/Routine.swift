@@ -44,6 +44,8 @@ struct RoutineExercise: Codable, Identifiable, Hashable, Sendable {
     let targetRepMin: Int?
     let targetRepMax: Int?
     let targetRPE: Double?
+    let targetDurationSecsMin: Int?
+    let targetDurationSecsMax: Int?
     let notes: String?
     let updatedAt: Date
 
@@ -57,6 +59,8 @@ struct RoutineExercise: Codable, Identifiable, Hashable, Sendable {
         case targetRepMin = "target_rep_min"
         case targetRepMax = "target_rep_max"
         case targetRPE   = "target_rpe"
+        case targetDurationSecsMin = "target_duration_secs_min"
+        case targetDurationSecsMax = "target_duration_secs_max"
         case notes
         case updatedAt   = "updated_at"
     }

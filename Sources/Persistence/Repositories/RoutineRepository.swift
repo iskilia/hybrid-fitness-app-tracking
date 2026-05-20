@@ -234,6 +234,8 @@ struct RoutineRepository {
                     targetRepMin: columnInt(stmt, 6),
                     targetRepMax: columnInt(stmt, 7),
                     targetRPE: columnDouble(stmt, 8),
+                    targetDurationSecsMin: nil,
+                    targetDurationSecsMax: nil,
                     notes: columnText(stmt, 9),
                     updatedAt: updatedAt
                 ))

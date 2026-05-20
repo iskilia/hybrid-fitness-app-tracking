@@ -63,9 +63,14 @@ private func setSchemaVersion(_ db: OpaquePointer, version: Int) throws {
 }
 
 // MARK: - V2 migration body
-// Populated by TV1.1. Empty for TV0.2.
+
 private func applyV2(_ db: OpaquePointer) throws {
-    // no-op
+    try exec(db: db, sql: "ALTER TABLE routine_exercise ADD COLUMN target_duration_secs_min INTEGER;")
+    try exec(db: db, sql: "ALTER TABLE routine_exercise ADD COLUMN target_duration_secs_max INTEGER;")
+    try exec(db: db, sql: """
+        CREATE INDEX IF NOT EXISTS idx_session_routine_finished
+            ON session(routine_id, finished_at DESC);
+        """)
 }
 
 private func querySingleInt(_ db: OpaquePointer, sql: String) throws -> Int? {
