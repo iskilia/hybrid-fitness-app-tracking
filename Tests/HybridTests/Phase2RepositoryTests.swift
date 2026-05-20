@@ -663,6 +663,455 @@ final class Phase2RepositoryTests: XCTestCase {
         XCTAssertEqual(postBlocks, 0, "run_interval_block should CASCADE on run_template delete")
     }
 
+    // MARK: - Phase V2 — TV2.1: RoutineExercise timed targets round-trip
+
+    func testRoutineExerciseRoundTripsTimedTargetsViaRepository() async throws {
+        // Plank is seed exercise ID 29 (metric_type = TIME).
+        let plankUUID = UUID(uuidString: "00000000-0000-0000-0001-000000000029")!
+        let plankRowID = try await resolveExerciseRowID(uuid: plankUUID)
+
+        let now = Date()
+        let routineUUID = UUID()
+        let routine = Routine(
+            id: 0, clientUUID: routineUUID,
+            name: "Core Hold Day", type: .lift,
+            sortOrder: 0, createdAt: now, updatedAt: now, deletedAt: nil
+        )
+        try await routines.create(routine, exerciseEntries: [], runEntries: [])
+        let stored = try await routines.get(id: routineUUID)
+        let routineRowID = stored!.id
+
+        let timedEntry = RoutineExercise(
+            id: 0,
+            clientUUID: UUID(),
+            routineID: routineRowID,
+            exerciseID: plankRowID,
+            sortOrder: 0,
+            targetSets: 3,
+            targetRepMin: nil,
+            targetRepMax: nil,
+            targetRPE: nil,
+            targetDurationSecsMin: 30,
+            targetDurationSecsMax: 45,
+            notes: nil,
+            updatedAt: now
+        )
+        try await routines.update(routine, exerciseEntries: [timedEntry], runEntries: [])
+
+        let listed = try await routines.listExercises(routineID: routineUUID)
+        XCTAssertEqual(listed.count, 1)
+        XCTAssertEqual(listed[0].targetDurationSecsMin, 30,
+                       "target_duration_secs_min should round-trip via listExercises")
+        XCTAssertEqual(listed[0].targetDurationSecsMax, 45,
+                       "target_duration_secs_max should round-trip via listExercises")
+        XCTAssertEqual(listed[0].exerciseID, plankRowID)
+    }
+
+    // MARK: - Phase V2 — TV2.2: lastCompletedSession
+
+    func testLastCompletedSessionReturnsMostRecentCompleted() async throws {
+        // Build a routine and stamp three sessions on it: IN_PROGRESS, ABANDONED, COMPLETED.
+        let now = Date()
+        let routineUUID = UUID()
+        let routine = Routine(
+            id: 0, clientUUID: routineUUID,
+            name: "Last-Completed R", type: .lift,
+            sortOrder: 0, createdAt: now, updatedAt: now, deletedAt: nil
+        )
+        try await routines.create(routine, exerciseEntries: [], runEntries: [])
+        let routineRowID = (try await routines.get(id: routineUUID))!.id
+
+        // 1. IN_PROGRESS (just start, do not finish).
+        _ = try await sessions.start(routineID: routineUUID, type: .lift)
+
+        // 2. ABANDONED.
+        let abandonMe = try await sessions.start(routineID: routineUUID, type: .lift)
+        try await sessions.abandon(id: abandonMe.clientUUID)
+
+        // 3. COMPLETED — this is the one we expect back.
+        let completed = try await sessions.start(routineID: routineUUID, type: .lift)
+        try await sessions.finish(id: completed.clientUUID)
+
+        let last = try await sessions.lastCompletedSession(forRoutineID: routineRowID)
+        XCTAssertNotNil(last)
+        XCTAssertEqual(last?.clientUUID, completed.clientUUID,
+                       "lastCompletedSession must return the COMPLETED session, not IN_PROGRESS/ABANDONED")
+        XCTAssertEqual(last?.status, .completed)
+    }
+
+    func testLastCompletedSessionReturnsNilForUnusedRoutine() async throws {
+        let now = Date()
+        let routineUUID = UUID()
+        let routine = Routine(
+            id: 0, clientUUID: routineUUID,
+            name: "Untouched R", type: .lift,
+            sortOrder: 0, createdAt: now, updatedAt: now, deletedAt: nil
+        )
+        try await routines.create(routine, exerciseEntries: [], runEntries: [])
+        let routineRowID = (try await routines.get(id: routineUUID))!.id
+
+        let last = try await sessions.lastCompletedSession(forRoutineID: routineRowID)
+        XCTAssertNil(last,
+                     "lastCompletedSession should return nil when no sessions exist for the routine")
+    }
+
+    func testLastCompletedSessionReturnsMostRecentWhenMultipleCompleted() async throws {
+        let now = Date()
+        let routineUUID = UUID()
+        let routine = Routine(
+            id: 0, clientUUID: routineUUID,
+            name: "Two-Completed R", type: .lift,
+            sortOrder: 0, createdAt: now, updatedAt: now, deletedAt: nil
+        )
+        try await routines.create(routine, exerciseEntries: [], runEntries: [])
+        let routineRowID = (try await routines.get(id: routineUUID))!.id
+
+        // Two completed sessions; force distinct finished_at via raw UPDATE
+        // (finish() stores Date() at integer-second resolution → two consecutive finishes may tie).
+        let earlier = try await sessions.start(routineID: routineUUID, type: .lift)
+        try await sessions.finish(id: earlier.clientUUID)
+        let earlierEpoch = Int(Date().timeIntervalSince1970) - 3600
+        try await rawExec("UPDATE session SET finished_at = \(earlierEpoch) WHERE client_uuid = '\(earlier.clientUUID.uuidString.lowercased())';")
+
+        let later = try await sessions.start(routineID: routineUUID, type: .lift)
+        try await sessions.finish(id: later.clientUUID)
+        let laterEpoch = Int(Date().timeIntervalSince1970)
+        try await rawExec("UPDATE session SET finished_at = \(laterEpoch) WHERE client_uuid = '\(later.clientUUID.uuidString.lowercased())';")
+
+        let last = try await sessions.lastCompletedSession(forRoutineID: routineRowID)
+        XCTAssertEqual(last?.clientUUID, later.clientUUID,
+                       "lastCompletedSession should return the session with the later finished_at")
+    }
+
+    // MARK: - Phase V2 — TV2.3 / TV2.3a: metric-type immutability + lock check
+
+    func testExerciseUpdateRejectsMetricTypeChangeWhenSetsExist() async throws {
+        // Use Back Squat (seed id 2, metric_type = REPS).
+        let backSquat = try await exercises.get(id: backSquatLikelyUUID)
+        XCTAssertNotNil(backSquat, "Back Squat seed should be present")
+        let exerciseRowID = backSquat!.id
+
+        // Log a session_set against Back Squat so the immutability guard kicks in.
+        let session = try await sessions.start(routineID: nil, type: .lift)
+        let now = Date()
+        let set = SessionSet(
+            id: 0, clientUUID: UUID(),
+            sessionID: session.id, exerciseID: exerciseRowID,
+            exerciseOrder: 0, setNumber: 1,
+            setType: .working,
+            weightKg: 100.0, reps: 5,
+            durationSecs: nil, distanceM: nil,
+            rpe: nil, completedAt: nil,
+            notes: nil, updatedAt: now
+        )
+        try await sets.append(set)
+
+        // Build a flipped-metric clone (REPS → TIME) and expect a conflict.
+        let flipped = Exercise(
+            id: backSquat!.id,
+            clientUUID: backSquat!.clientUUID,
+            name: backSquat!.name,
+            abbreviation: backSquat!.abbreviation,
+            equipmentID: backSquat!.equipmentID,
+            metricType: .time,
+            isCustom: backSquat!.isCustom,
+            notes: backSquat!.notes,
+            formLink: backSquat!.formLink,
+            createdAt: backSquat!.createdAt,
+            updatedAt: Date(),
+            deletedAt: nil
+        )
+        do {
+            try await exercises.update(flipped, muscles: [])
+            XCTFail("Expected DatabaseError.conflict on metric_type change after a set was logged")
+        } catch let DatabaseError.conflict(msg) {
+            XCTAssertFalse(msg.isEmpty, "conflict message should not be empty")
+        } catch {
+            XCTFail("Expected DatabaseError.conflict, got \(error)")
+        }
+    }
+
+    func testExerciseUpdateAllowsMetricTypeChangeWhenNoSetsExist() async throws {
+        // Build a fresh custom exercise with metric_type = REPS; no sets logged.
+        let now = Date()
+        let customUUID = UUID()
+        let custom = Exercise(
+            id: 0,
+            clientUUID: customUUID,
+            name: "Custom Convertible",
+            abbreviation: "CCV",
+            equipmentID: 3,
+            metricType: .reps,
+            isCustom: true,
+            notes: nil,
+            formLink: nil,
+            createdAt: now,
+            updatedAt: now,
+            deletedAt: nil
+        )
+        try await exercises.create(custom, muscles: [(muscleUUID(11), .primary)])
+
+        let stored = try await exercises.get(id: customUUID)
+        XCTAssertNotNil(stored)
+        let rowID = stored!.id
+
+        // Flip to TIME; no sets exist, so this must succeed.
+        let flipped = Exercise(
+            id: rowID,
+            clientUUID: customUUID,
+            name: stored!.name,
+            abbreviation: stored!.abbreviation,
+            equipmentID: stored!.equipmentID,
+            metricType: .time,
+            isCustom: stored!.isCustom,
+            notes: stored!.notes,
+            formLink: stored!.formLink,
+            createdAt: stored!.createdAt,
+            updatedAt: Date(),
+            deletedAt: nil
+        )
+        try await exercises.update(flipped, muscles: [(muscleUUID(11), .primary)])
+
+        let after = try await exercises.get(id: customUUID)
+        XCTAssertEqual(after?.metricType, .time,
+                       "metric_type should flip to TIME when no sets reference the exercise")
+    }
+
+    func testMetricTypeLockedReturnsTrueAfterFirstSet() async throws {
+        // Fresh custom exercise — no sets yet.
+        let now = Date()
+        let customUUID = UUID()
+        let custom = Exercise(
+            id: 0,
+            clientUUID: customUUID,
+            name: "Custom Locker",
+            abbreviation: "CLK",
+            equipmentID: 3,
+            metricType: .reps,
+            isCustom: true,
+            notes: nil,
+            formLink: nil,
+            createdAt: now,
+            updatedAt: now,
+            deletedAt: nil
+        )
+        try await exercises.create(custom, muscles: [(muscleUUID(11), .primary)])
+        let rowID = (try await exercises.get(id: customUUID))!.id
+
+        let preLock = try await exercises.metricTypeLocked(exerciseID: rowID)
+        XCTAssertFalse(preLock, "metric_type should be unlocked before any sets exist")
+
+        // Append a single REPS-shaped set.
+        let session = try await sessions.start(routineID: nil, type: .lift)
+        let set = SessionSet(
+            id: 0, clientUUID: UUID(),
+            sessionID: session.id, exerciseID: rowID,
+            exerciseOrder: 0, setNumber: 1,
+            setType: .working,
+            weightKg: 40.0, reps: 8,
+            durationSecs: nil, distanceM: nil,
+            rpe: nil, completedAt: nil,
+            notes: nil, updatedAt: now
+        )
+        try await sets.append(set)
+
+        let postLock = try await exercises.metricTypeLocked(exerciseID: rowID)
+        XCTAssertTrue(postLock, "metric_type should lock after the first session_set is logged")
+    }
+
+    // MARK: - Phase V2 — TV2.4: set-shape validation per metric_type
+
+    func testSessionSetAppendRejectsTimeRowWithReps() async throws {
+        let plankUUID = UUID(uuidString: "00000000-0000-0000-0001-000000000029")!
+        let plankRowID = try await resolveExerciseRowID(uuid: plankUUID)
+        let session = try await sessions.start(routineID: nil, type: .lift)
+        let now = Date()
+
+        // 1. TIME with both duration AND reps → reject.
+        let badBoth = SessionSet(
+            id: 0, clientUUID: UUID(),
+            sessionID: session.id, exerciseID: plankRowID,
+            exerciseOrder: 0, setNumber: 1,
+            setType: .working,
+            weightKg: nil, reps: 5,
+            durationSecs: 30, distanceM: nil,
+            rpe: nil, completedAt: nil,
+            notes: nil, updatedAt: now
+        )
+        do {
+            try await sets.append(badBoth)
+            XCTFail("Expected reject on TIME exercise with both duration_secs and reps")
+        } catch {
+            // Expected
+        }
+
+        // 2. TIME with both nil → reject.
+        let badNeither = SessionSet(
+            id: 0, clientUUID: UUID(),
+            sessionID: session.id, exerciseID: plankRowID,
+            exerciseOrder: 0, setNumber: 2,
+            setType: .working,
+            weightKg: nil, reps: nil,
+            durationSecs: nil, distanceM: nil,
+            rpe: nil, completedAt: nil,
+            notes: nil, updatedAt: now
+        )
+        do {
+            try await sets.append(badNeither)
+            XCTFail("Expected reject on TIME exercise with no duration_secs")
+        } catch {
+            // Expected
+        }
+
+        // 3. TIME with duration only → accept.
+        let good = SessionSet(
+            id: 0, clientUUID: UUID(),
+            sessionID: session.id, exerciseID: plankRowID,
+            exerciseOrder: 0, setNumber: 3,
+            setType: .working,
+            weightKg: nil, reps: nil,
+            durationSecs: 30, distanceM: nil,
+            rpe: nil, completedAt: nil,
+            notes: nil, updatedAt: now
+        )
+        try await sets.append(good)
+
+        let listed = try await sets.list(sessionID: session.clientUUID, exerciseID: plankUUID)
+        XCTAssertEqual(listed.count, 1, "Only the duration-only TIME set should have persisted")
+        XCTAssertEqual(listed[0].durationSecs, 30)
+        XCTAssertNil(listed[0].reps)
+    }
+
+    func testSessionSetAppendRejectsRepsRowWithDuration() async throws {
+        // Back Squat = REPS.
+        let exerciseRowID = try await resolveExerciseRowID(uuid: backSquatLikelyUUID)
+        let session = try await sessions.start(routineID: nil, type: .lift)
+        let now = Date()
+
+        // 1. REPS with both reps AND duration → reject.
+        let badBoth = SessionSet(
+            id: 0, clientUUID: UUID(),
+            sessionID: session.id, exerciseID: exerciseRowID,
+            exerciseOrder: 0, setNumber: 1,
+            setType: .working,
+            weightKg: 100.0, reps: 5,
+            durationSecs: 30, distanceM: nil,
+            rpe: nil, completedAt: nil,
+            notes: nil, updatedAt: now
+        )
+        do {
+            try await sets.append(badBoth)
+            XCTFail("Expected reject on REPS exercise with duration_secs set")
+        } catch {
+            // Expected
+        }
+
+        // 2. REPS with reps nil → reject.
+        let badNoReps = SessionSet(
+            id: 0, clientUUID: UUID(),
+            sessionID: session.id, exerciseID: exerciseRowID,
+            exerciseOrder: 0, setNumber: 2,
+            setType: .working,
+            weightKg: 100.0, reps: nil,
+            durationSecs: nil, distanceM: nil,
+            rpe: nil, completedAt: nil,
+            notes: nil, updatedAt: now
+        )
+        do {
+            try await sets.append(badNoReps)
+            XCTFail("Expected reject on REPS exercise with no reps")
+        } catch {
+            // Expected
+        }
+
+        // 3. REPS with reps only → accept.
+        let good = SessionSet(
+            id: 0, clientUUID: UUID(),
+            sessionID: session.id, exerciseID: exerciseRowID,
+            exerciseOrder: 0, setNumber: 3,
+            setType: .working,
+            weightKg: 100.0, reps: 5,
+            durationSecs: nil, distanceM: nil,
+            rpe: nil, completedAt: nil,
+            notes: nil, updatedAt: now
+        )
+        try await sets.append(good)
+
+        let listed = try await sets.list(sessionID: session.clientUUID, exerciseID: backSquatLikelyUUID)
+        XCTAssertEqual(listed.count, 1, "Only the reps-only REPS set should have persisted")
+        XCTAssertEqual(listed[0].reps, 5)
+        XCTAssertNil(listed[0].durationSecs)
+    }
+
+    // MARK: - Phase V2 — TV2.5: topSet within one session
+
+    func testTopSetForTimeExerciseReturnsLongestHold() async throws {
+        let plankUUID = UUID(uuidString: "00000000-0000-0000-0001-000000000029")!
+        let plankRowID = try await resolveExerciseRowID(uuid: plankUUID)
+        let session = try await sessions.start(routineID: nil, type: .lift)
+        let now = Date()
+
+        let durations = [20, 45, 30]
+        for (i, secs) in durations.enumerated() {
+            let s = SessionSet(
+                id: 0, clientUUID: UUID(),
+                sessionID: session.id, exerciseID: plankRowID,
+                exerciseOrder: 0, setNumber: i + 1,
+                setType: .working,
+                weightKg: nil, reps: nil,
+                durationSecs: secs, distanceM: nil,
+                rpe: nil, completedAt: nil,
+                notes: nil, updatedAt: now
+            )
+            try await sets.append(s)
+        }
+
+        let top = try await sets.topSet(sessionID: session.id, exerciseID: plankRowID)
+        XCTAssertNotNil(top, "topSet should return a row for a TIME exercise with sets logged")
+        XCTAssertEqual(top?.durationSecs, 45,
+                       "topSet on a TIME exercise should pick the longest hold")
+    }
+
+    func testTopSetForRepsExerciseReturnsHeaviestThenMostReps() async throws {
+        let exerciseRowID = try await resolveExerciseRowID(uuid: backSquatLikelyUUID)
+        let session = try await sessions.start(routineID: nil, type: .lift)
+        let now = Date()
+
+        let specs: [(weight: Double, reps: Int, setNumber: Int)] = [
+            (100.0, 5, 1),
+            (120.0, 3, 2),
+            (120.0, 5, 3),
+        ]
+        for spec in specs {
+            let s = SessionSet(
+                id: 0, clientUUID: UUID(),
+                sessionID: session.id, exerciseID: exerciseRowID,
+                exerciseOrder: 0, setNumber: spec.setNumber,
+                setType: .working,
+                weightKg: spec.weight, reps: spec.reps,
+                durationSecs: nil, distanceM: nil,
+                rpe: nil, completedAt: nil,
+                notes: nil, updatedAt: now
+            )
+            try await sets.append(s)
+        }
+
+        let top = try await sets.topSet(sessionID: session.id, exerciseID: exerciseRowID)
+        XCTAssertNotNil(top, "topSet should return a row for a REPS exercise with sets logged")
+        XCTAssertEqual(top?.weightKg, 120.0,
+                       "topSet on a REPS exercise should pick the heaviest weight")
+        XCTAssertEqual(top?.reps, 5,
+                       "topSet should tie-break by reps DESC when weight is tied")
+    }
+
+    func testTopSetReturnsNilForEmptySessionExercisePair() async throws {
+        let exerciseRowID = try await resolveExerciseRowID(uuid: backSquatLikelyUUID)
+        let session = try await sessions.start(routineID: nil, type: .lift)
+
+        let top = try await sets.topSet(sessionID: session.id, exerciseID: exerciseRowID)
+        XCTAssertNil(top, "topSet should return nil when no sets exist for the session/exercise pair")
+    }
+
     // MARK: - Helpers
 
     /// Returns the exercise's integer row ID looked up by client_uuid.

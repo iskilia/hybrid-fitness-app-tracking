@@ -10,6 +10,7 @@ struct SessionSetRepository {
 
     func append(_ set: SessionSet) async throws {
         try await dbManager.transaction { db in
+            try validateSetAgainstMetricType(db, set)
             try insertSet(db, set)
         }
     }
@@ -18,6 +19,7 @@ struct SessionSetRepository {
 
     func update(_ set: SessionSet) async throws {
         try await dbManager.transaction { db in
+            try validateSetAgainstMetricType(db, set)
             let sql = """
                 UPDATE session_set
                 SET exercise_order = ?, set_number = ?, set_type = ?,
@@ -237,5 +239,65 @@ struct SessionSetRepository {
             throw DatabaseError.notFound
         }
         return id
+    }
+
+    private func metricType(_ db: OpaquePointer, exerciseID: Int) throws -> String? {
+        let stmt = try prepare(db, "SELECT metric_type FROM exercise WHERE id = ?;")
+        defer { finalize(stmt) }
+        bindInt(stmt, 1, exerciseID)
+        guard try step(stmt) else { return nil }
+        return columnText(stmt, 0)
+    }
+
+    private func validateSetAgainstMetricType(_ db: OpaquePointer, _ set: SessionSet) throws {
+        guard let raw = try metricType(db, exerciseID: set.exerciseID) else { return }
+        switch raw {
+        case "TIME":
+            if set.durationSecs == nil {
+                throw DatabaseError.conflict("TIME exercise requires duration_secs")
+            }
+            if set.reps != nil {
+                throw DatabaseError.conflict("TIME exercise must not have reps")
+            }
+        case "REPS", "REPS_BODYWEIGHT":
+            if set.reps == nil {
+                throw DatabaseError.conflict("\(raw) exercise requires reps")
+            }
+            if set.durationSecs != nil {
+                throw DatabaseError.conflict("\(raw) exercise must not have duration_secs")
+            }
+        default:
+            break
+        }
+    }
+
+    // MARK: - Top set within one session
+
+    func topSet(sessionID: Int, exerciseID: Int) async throws -> SessionSet? {
+        try await dbManager.read { db in
+            guard let raw = try metricType(db, exerciseID: exerciseID) else { return nil }
+
+            let orderClause: String
+            switch raw {
+            case "TIME":
+                orderClause = "ss.duration_secs DESC NULLS LAST"
+            case "REPS", "REPS_BODYWEIGHT":
+                orderClause = "ss.weight_kg DESC NULLS LAST, ss.reps DESC NULLS LAST"
+            default:
+                return nil
+            }
+
+            let sql = setSelectSQL() + """
+                 WHERE ss.session_id = ? AND ss.exercise_id = ?
+                 ORDER BY \(orderClause)
+                 LIMIT 1;
+                """
+            let stmt = try prepare(db, sql)
+            defer { finalize(stmt) }
+            bindInt(stmt, 1, sessionID)
+            bindInt(stmt, 2, exerciseID)
+            guard try step(stmt) else { return nil }
+            return try setFromStmt(stmt)
+        }
     }
 }
