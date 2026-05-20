@@ -29,14 +29,15 @@ final class Phase1GateTests: XCTestCase {
 
     // MARK: - Tests
 
-    /// Migrate fresh DB → schema_meta.version must be 1.
+    /// Migrate fresh DB → schema_meta.version must equal the latest registered migration.
+    /// V2 registered an empty migration slot (TV0.2) which advances version 1 → 2.
     func testMigrateAppliesV1AndSetsSchemaVersion() throws {
         let db = try unwrapDB()
 
         XCTAssertNoThrow(try migrate(db), "migrate(db) threw on fresh in-memory DB")
 
         let version = try scalarInt(db, "SELECT version FROM schema_meta WHERE id = 1;")
-        XCTAssertEqual(version, 1, "schema_meta.version should be 1 after baseline migration")
+        XCTAssertEqual(version, 2, "schema_meta.version should equal the latest registered migration version")
     }
 
     /// Seed the empty DB → seedIfEmpty must not throw.

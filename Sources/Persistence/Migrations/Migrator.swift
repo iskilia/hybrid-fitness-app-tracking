@@ -18,7 +18,11 @@ public func migrate(_ db: OpaquePointer) throws {
             try applySchema(db)
             try setSchemaVersion(db, version: 1)
         }),
-        // Append V2, V3, … here as new tuples.
+        (version: 2, apply: { db in
+            try applyV2(db)
+            try setSchemaVersion(db, version: 2)
+        }),
+        // Append V3, V4, … here as new tuples.
     ]
 
     for migration in migrations where migration.version > currentVersion {
@@ -56,6 +60,12 @@ private func setSchemaVersion(_ db: OpaquePointer, version: Int) throws {
         ON CONFLICT(id) DO UPDATE SET version = \(version), applied_at = \(now);
         """
     try exec(db: db, sql: sql)
+}
+
+// MARK: - V2 migration body
+// Populated by TV1.1. Empty for TV0.2.
+private func applyV2(_ db: OpaquePointer) throws {
+    // no-op
 }
 
 private func querySingleInt(_ db: OpaquePointer, sql: String) throws -> Int? {
