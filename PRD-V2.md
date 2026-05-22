@@ -76,6 +76,25 @@ Card content:
 
 The card is read-only. Exercises that were in the prior session but are no longer in today's routine are still shown, visually muted, with a "removed from routine" tag. New exercises in today's routine that have no prior data are omitted from the card.
 
+### Run-lane addendum
+
+**[V2.1]** The same card surfaces on run routine detail screens, but the per-item shape changes. A run routine references one or more `routine_run` slots (each pointing at a `run_template`), and each slot in the prior session produced exactly one `session_run` row plus its `session_run_split` rows.
+
+Card content for the run lane, in original `routine_run.sort_order`:
+
+- Slot label: the underlying `run_template.name`.
+- Best-effort summary line, in this order of preference:
+  1. **Distance-based templates** (`run_type` of `LONG`, `EASY`, `STEADY`, `RACE`): `"{actual_distance_km, 2dp} km · {duration_secs → hh:mm:ss} · {avg_pace_secs → m'ss"/km}"`. Heart-rate suffix `· avg {avg_hr} bpm` when present.
+  2. **Interval / structured templates** (`run_type` of `INTERVAL`, `TEMPO`, `FARTLEK`): `"{repeat_count} × {block summary} · {duration_secs → hh:mm:ss}"` where block summary is taken from `IntervalDescription` for the dominant block, plus `avg_pace_secs` for that block.
+  3. **Missing data fallback**: when the prior `session_run` row has neither pace nor HR (e.g. user finished early without GPS), render `"{duration_secs → hh:mm:ss} · pace not recorded"`.
+- Removed-from-routine slots follow the same muted-with-tag rule as the lift lane.
+
+`session_run_split` rows are not surfaced in the card itself — the tap target opens the full session detail screen where splits already live (V1 surface).
+
+The query path mirrors the lift lane: `SessionRepository.lastCompletedSession(forRoutineID:)` returns the session; for each `routine_run` slot a new repo method (`SessionRunRepository.bestRunForSlot(sessionID:templateID:)`) returns the matching `session_run` row, formatted by a shared run-lane formatter.
+
+Empty state copy is identical to the lift lane ("First time on this routine — no comparison yet").
+
 ## LLM data access
 
 **[V2]** Two layers, both opt-in via existing iOS surfaces. No new permission prompts, no network traffic.
@@ -121,3 +140,35 @@ V1 metrics retained. **[V2]** Add:
 - **Risk:** Auto-writing `hybrid-latest.json` on every session finish becomes expensive as the DB grows. **Fix:** Debounce 250 ms, off-main dispatch. For DBs over a configurable size threshold (default 10 MB) the snapshot writer falls back to manifest-only mode and prompts the user to use the regular CSV/JSON export.
 - **Risk:** Files-app exposure surprises a privacy-conscious user by making `Hybrid.sqlite` visible. **Fix:** Settings footer states the visibility explicitly. Auto-snapshot is user-togglable.
 - **Risk:** An LLM consuming `hybrid-latest.json` parses an inconsistent mid-write state. **Fix:** Atomic write via temp-file + rename. Readers always see a complete prior version or the complete new version, never partial.
+
+## Verification
+
+**[V2]** 15-step manual pass that gates the V2 → main merge. The canonical checklist with sign-off block lives in `VERIFICATION-V2.md` at the repo root; the steps below are the spec the checklist instantiates.
+
+### Timed-hold flows (7 steps)
+
+1. Clean install launches the app, seeded routines load without crash.
+2. A seeded routine that contains Plank displays a duration range (e.g. `30–45s`) on the Plank row instead of a rep range.
+3. Custom-exercise editor can create an exercise with `metric_type = TIME`; it persists into the exercise library.
+4. The metric-type picker on a brand-new custom exercise is editable; round-tripping through "Reps + Weight" persists across reopen.
+5. Active session for a routine containing Plank renders a single "Seconds" SetRow field (no KG / Reps fields); two sets at different durations both persist and finish cleanly.
+6. After a set has been logged against a Time custom exercise, reopening that exercise's editor shows the metric-type picker locked with hint copy ("Locked — already used in completed sets").
+7. Exercise history view for a Time exercise plots `duration_secs` on the Y axis (legend "TOP-SET SECS") and renders session list rows as `{n}s`.
+
+### Previous-execution recall (3 steps)
+
+8. After completing one session of a lift routine, the routine detail screen renders `LastExecutionCard` above the Start button with relative time, total duration mm:ss, and per-exercise top sets formatted per metric type.
+9. A never-completed routine shows the empty state copy.
+10. Editing a completed routine to remove one exercise and add another causes the card on reopen to show the removed exercise muted with a "removed" tag while omitting the newly-added one.
+
+### LLM access (5 steps)
+
+11. Files app → On My iPhone → Hybrid exposes `Hybrid.sqlite`, `hybrid-latest.json`, and `hybrid-schema.md`.
+12. `hybrid-schema.md` opens to content that contains `schema_version: 2.0`, the Envelope section, and the metric_type semantics table.
+13. Finishing a session causes `hybrid-latest.json` mtime to advance; the file parses to an object whose top-level keys are `schema_version: "2.0"` and `data: { ... }`.
+14. With "Auto-update LLM snapshot" toggled OFF, finishing another session leaves `hybrid-latest.json` mtime unchanged.
+15. Tapping "Refresh LLM snapshot now" in Settings updates `hybrid-latest.json` mtime regardless of the toggle.
+
+### Sign-off
+
+The tester records device / OS, date, pass/fail per step, and any regressions in the sign-off block of `VERIFICATION-V2.md`. A clean pass is required before tagging `v0.2` on the merge commit.
