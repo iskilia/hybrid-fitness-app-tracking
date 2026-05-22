@@ -1152,4 +1152,181 @@ final class Phase2RepositoryTests: XCTestCase {
             return sqlite3_column_double(stmt, 0)
         }
     }
+
+    // MARK: - Phase V7 — TV7.1 case #1: timed-hold custom exercise create round-trips
+
+    func testTimedHoldCustomExerciseCreateRoundTrips() async throws {
+        let now = Date()
+        let customUUID = UUID()
+        let custom = Exercise(
+            id: 0,
+            clientUUID: customUUID,
+            name: "Custom L-Sit Hold",
+            abbreviation: "CLS",
+            equipmentID: 3,            // BODYWEIGHT
+            metricType: .time,
+            isCustom: true,
+            notes: nil,
+            formLink: nil,
+            createdAt: now,
+            updatedAt: now,
+            deletedAt: nil
+        )
+        try await exercises.create(custom, muscles: [
+            (muscleUUID(11), .primary),  // Core
+        ])
+
+        let stored = try await exercises.get(id: customUUID)
+        XCTAssertNotNil(stored, "Custom timed-hold exercise should be retrievable post-create")
+        XCTAssertEqual(stored?.metricType, .time,
+                       "Custom timed-hold exercise should round-trip metric_type = TIME")
+        XCTAssertEqual(stored?.name, "Custom L-Sit Hold")
+        XCTAssertEqual(stored?.isCustom, true)
+
+        let inCustomList = try await exercises.listCustom()
+        XCTAssertTrue(inCustomList.contains { $0.clientUUID == customUUID },
+                      "Custom timed-hold should appear in listCustom()")
+    }
+
+    // MARK: - Phase V7 — TV7.1 case #2: mixed rep-based + time-based routine round-trips
+
+    func testRoutineWithMixedRepAndTimeItemsRoundTrips() async throws {
+        // Bench Press (REPS, seed id 1) + Plank (TIME, seed id 29).
+        let plankUUID = UUID(uuidString: "00000000-0000-0000-0001-000000000029")!
+        let plankRowID = try await resolveExerciseRowID(uuid: plankUUID)
+        let benchRowID = try await resolveExerciseRowID(uuid: benchPressUUID)
+
+        let now = Date()
+        let routineUUID = UUID()
+        let routine = Routine(
+            id: 0, clientUUID: routineUUID,
+            name: "Mixed Day", type: .lift,
+            sortOrder: 0, createdAt: now, updatedAt: now, deletedAt: nil
+        )
+        try await routines.create(routine, exerciseEntries: [], runEntries: [])
+        let routineRowID = (try await routines.get(id: routineUUID))!.id
+
+        let repsEntry = RoutineExercise(
+            id: 0, clientUUID: UUID(),
+            routineID: routineRowID, exerciseID: benchRowID, sortOrder: 0,
+            targetSets: 3, targetRepMin: 5, targetRepMax: 8,
+            targetRPE: 8.0,
+            targetDurationSecsMin: nil, targetDurationSecsMax: nil,
+            notes: nil, updatedAt: now
+        )
+        let timeEntry = RoutineExercise(
+            id: 0, clientUUID: UUID(),
+            routineID: routineRowID, exerciseID: plankRowID, sortOrder: 1,
+            targetSets: 3, targetRepMin: nil, targetRepMax: nil,
+            targetRPE: nil,
+            targetDurationSecsMin: 30, targetDurationSecsMax: 45,
+            notes: nil, updatedAt: now
+        )
+        try await routines.update(routine, exerciseEntries: [repsEntry, timeEntry], runEntries: [])
+
+        let listed = try await routines.listExercises(routineID: routineUUID)
+        XCTAssertEqual(listed.count, 2, "Mixed routine should have two routine_exercise rows")
+
+        let repsRow = try XCTUnwrap(listed.first(where: { $0.exerciseID == benchRowID }))
+        XCTAssertEqual(repsRow.targetRepMin, 5)
+        XCTAssertEqual(repsRow.targetRepMax, 8)
+        XCTAssertNil(repsRow.targetDurationSecsMin,
+                     "REPS entry should not carry duration targets")
+        XCTAssertNil(repsRow.targetDurationSecsMax)
+
+        let timeRow = try XCTUnwrap(listed.first(where: { $0.exerciseID == plankRowID }))
+        XCTAssertEqual(timeRow.targetDurationSecsMin, 30)
+        XCTAssertEqual(timeRow.targetDurationSecsMax, 45)
+        XCTAssertNil(timeRow.targetRepMin,
+                     "TIME entry should not carry rep targets")
+        XCTAssertNil(timeRow.targetRepMax)
+    }
+
+    // MARK: - Phase V7 — TV7.1 case #8: LastExecutionSummary mutes removed exercises
+
+    func testLastExecutionSummaryMutesExercisesRemovedFromRoutine() async throws {
+        // Build a routine containing Bench Press + Back Squat. Run a session
+        // that logs sets for BOTH exercises. Then edit the routine to drop
+        // Back Squat. Reopen via the lift VM's loadLastExecution; assert that
+        // Back Squat surfaces as a `removed: true` row.
+
+        let benchRowID = try await resolveExerciseRowID(uuid: benchPressUUID)
+        let backSquatRowID = try await resolveExerciseRowID(uuid: backSquatLikelyUUID)
+
+        let now = Date()
+        let routineUUID = UUID()
+        let routine = Routine(
+            id: 0, clientUUID: routineUUID,
+            name: "Drop-an-exercise R", type: .lift,
+            sortOrder: 0, createdAt: now, updatedAt: now, deletedAt: nil
+        )
+        try await routines.create(routine, exerciseEntries: [], runEntries: [])
+        let routineRowID = (try await routines.get(id: routineUUID))!.id
+
+        let benchEntry = RoutineExercise(
+            id: 0, clientUUID: UUID(),
+            routineID: routineRowID, exerciseID: benchRowID, sortOrder: 0,
+            targetSets: 3, targetRepMin: 5, targetRepMax: 8,
+            targetRPE: nil, targetDurationSecsMin: nil, targetDurationSecsMax: nil,
+            notes: nil, updatedAt: now
+        )
+        let backSquatEntry = RoutineExercise(
+            id: 0, clientUUID: UUID(),
+            routineID: routineRowID, exerciseID: backSquatRowID, sortOrder: 1,
+            targetSets: 3, targetRepMin: 5, targetRepMax: 8,
+            targetRPE: nil, targetDurationSecsMin: nil, targetDurationSecsMax: nil,
+            notes: nil, updatedAt: now
+        )
+        try await routines.update(routine, exerciseEntries: [benchEntry, backSquatEntry], runEntries: [])
+
+        // Session: log a set for each exercise, then finish.
+        let session = try await sessions.start(routineID: routineUUID, type: .lift)
+        try await sets.append(SessionSet(
+            id: 0, clientUUID: UUID(),
+            sessionID: session.id, exerciseID: benchRowID,
+            exerciseOrder: 0, setNumber: 1,
+            setType: .working,
+            weightKg: 100.0, reps: 5,
+            durationSecs: nil, distanceM: nil,
+            rpe: nil, completedAt: nil,
+            notes: nil, updatedAt: now
+        ))
+        try await sets.append(SessionSet(
+            id: 0, clientUUID: UUID(),
+            sessionID: session.id, exerciseID: backSquatRowID,
+            exerciseOrder: 1, setNumber: 1,
+            setType: .working,
+            weightKg: 120.0, reps: 5,
+            durationSecs: nil, distanceM: nil,
+            rpe: nil, completedAt: nil,
+            notes: nil, updatedAt: now
+        ))
+        try await sessions.finish(id: session.clientUUID)
+
+        // Drop Back Squat from the routine — keep only Bench Press.
+        try await routines.update(routine, exerciseEntries: [benchEntry], runEntries: [])
+
+        // Exercise the lift VM. load() rebuilds entries; loadLastExecution()
+        // composes the summary against the now-shorter routine.
+        let dbm = db!
+        let vm = await MainActor.run { LiftRoutineDetailViewModel(dbManager: dbm) }
+        await vm.load(routineID: routineUUID)
+        await vm.loadLastExecution(routineID: routineUUID)
+        let summary = try await MainActor.run {
+            try XCTUnwrap(vm.lastExecutionSummary,
+                          "loadLastExecution should produce a summary when a COMPLETED session exists")
+        }
+
+        // Bench Press is current → not removed. Back Squat is dropped → removed.
+        let benchLine = summary.topSets.first(where: { $0.exerciseName == "Bench Press" })
+        XCTAssertNotNil(benchLine, "Bench Press (still in routine) should appear in the summary")
+        XCTAssertEqual(benchLine?.removed, false,
+                       "Bench Press (still in routine) should not be marked removed")
+
+        let backSquatLine = summary.topSets.first(where: { $0.exerciseName == "Back Squat" })
+        XCTAssertNotNil(backSquatLine,
+                        "Back Squat (logged last session, dropped from routine) should still appear in the summary as a muted row")
+        XCTAssertEqual(backSquatLine?.removed, true,
+                       "Back Squat should be marked removed=true after being dropped from the routine")
+    }
 }

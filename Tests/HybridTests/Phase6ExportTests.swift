@@ -248,6 +248,84 @@ final class Phase6ExportTests: XCTestCase {
 
     // MARK: - Helpers
 
+    // MARK: - Phase V7 — TV7.1 case #5: Export round-trips a timed set
+
+    func testJSONExportRoundTripsTimedSet() async throws {
+        // Plank seed = TIME, id 29.
+        let plankUUID = UUID(uuidString: "00000000-0000-0000-0001-000000000029")!
+        let session = try await sessions.start(routineID: nil, type: .lift)
+        let plankRowID = try await db.read { handle in
+            let stmt = try Hybrid.prepare(handle, "SELECT id FROM exercise WHERE client_uuid = '\(plankUUID.uuidString.lowercased())';")
+            defer { Hybrid.finalize(stmt) }
+            guard try Hybrid.step(stmt) else { return 0 }
+            return Int(sqlite3_column_int64(stmt, 0))
+        }
+        try await sets.append(SessionSet(
+            id: 0, clientUUID: UUID(),
+            sessionID: session.id, exerciseID: plankRowID,
+            exerciseOrder: 0, setNumber: 1,
+            setType: .working,
+            weightKg: nil, reps: nil,
+            durationSecs: 45, distanceM: nil,
+            rpe: nil, completedAt: Date(),
+            notes: nil, updatedAt: Date()
+        ))
+        try await sessions.finish(id: session.clientUUID)
+
+        let file = try await JSONExporter(dbManager: db).export()
+        let data = try Data(contentsOf: file)
+        let parsed = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let root = try XCTUnwrap(parsed)
+        let setsArr = try XCTUnwrap(root["session_set"] as? [[String: Any]],
+                                    "JSON export missing session_set")
+
+        // Find our timed row by exercise_id + duration_secs.
+        let timedRow = setsArr.first { row in
+            (row["exercise_id"] as? Int) == plankRowID
+                && (row["duration_secs"] as? Int) == 45
+        }
+        XCTAssertNotNil(timedRow,
+                        "JSON export should contain a row with exercise_id=\(plankRowID), duration_secs=45")
+        // Reps should be NSNull or missing for the TIME set.
+        if let row = timedRow {
+            let repsVal = row["reps"]
+            let isNilOrNull = (repsVal == nil) || (repsVal is NSNull)
+            XCTAssertTrue(isNilOrNull,
+                          "Timed set row should not carry a non-null reps value")
+        }
+    }
+
+    // MARK: - Phase V7 — TV7.1 case #11: auto-toggle OFF → session finish does not modify hybrid-latest.json mtime
+
+    func testSnapshotHookNoopWhenAutoDisabled() async throws {
+        let env = try makeSnapshotEnv()
+        defer { cleanupSnapshotEnv(env) }
+
+        let writer = SnapshotWriter(documentsURL: env.docsURL, dbManager: env.dbm)
+
+        // Snapshot Hook state. Reset to true on exit so other tests are unaffected.
+        let priorAuto = SnapshotHook.isAutoEnabled
+        let priorCurrent = SnapshotHook.current
+        defer {
+            SnapshotHook.isAutoEnabled = priorAuto
+            SnapshotHook.current = priorCurrent
+        }
+        SnapshotHook.current = writer
+        SnapshotHook.isAutoEnabled = false
+
+        // Fire the hook the same way SessionRepository.finish does.
+        SnapshotHook.notifyChange()
+
+        // Wait > debounce (250 ms) + a margin to be sure no write fires.
+        try await Task.sleep(nanoseconds: 800_000_000) // 800 ms
+
+        let target = env.docsURL.appendingPathComponent("hybrid-latest.json")
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: target.path),
+            "hybrid-latest.json should NOT be created when auto-update is OFF"
+        )
+    }
+
     private func seedMinimalSession() async throws {
         let session = try await sessions.start(routineID: nil, type: .lift)
         let uuidStr = benchPressUUID.uuidString.lowercased()
