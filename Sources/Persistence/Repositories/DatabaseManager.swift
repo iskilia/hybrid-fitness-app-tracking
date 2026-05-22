@@ -10,10 +10,15 @@ public actor DatabaseManager {
     // ensures no concurrent access while alive; deinit runs after all references drop.
     private nonisolated(unsafe) var db: OpaquePointer?
 
+    // Exposed for SnapshotWriter (TV3.3) to read the SQLite file size without
+    // going through the actor — it's a plain immutable value set at init.
+    public nonisolated let dbFileURL: URL?
+
     // MARK: - Init / deinit
 
     /// Opens the SQLite database at `url` (pass `nil` for `:memory:`).
     public init(url: URL?) throws {
+        self.dbFileURL = url
         let path = url?.path ?? ":memory:"
         var ptr: OpaquePointer?
         let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX
