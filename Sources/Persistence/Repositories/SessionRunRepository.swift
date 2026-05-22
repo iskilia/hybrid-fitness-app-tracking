@@ -115,6 +115,50 @@ struct SessionRunRepository {
         }
     }
 
+    // MARK: - Best run for a slot (TV5.2b)
+
+    /// Returns the `session_run` row recorded for the given session + template
+    /// slot. Each session yields at most one `session_run` per template slot;
+    /// when multiple are present (defensive) the highest `run_order` wins.
+    func bestRunForSlot(sessionID: Int, templateID: Int) async throws -> SessionRun? {
+        try await dbManager.read { db in
+            let sql = """
+                SELECT id, client_uuid, session_id, run_template_id, run_order,
+                       actual_distance_km, duration_secs, avg_pace_secs, avg_hr, max_hr,
+                       target_hr_min, target_hr_max, notes, updated_at
+                FROM session_run
+                WHERE session_id = ? AND run_template_id = ?
+                ORDER BY run_order DESC
+                LIMIT 1;
+                """
+            let stmt = try prepare(db, sql)
+            defer { finalize(stmt) }
+            bindInt(stmt, 1, sessionID)
+            bindInt(stmt, 2, templateID)
+            guard try step(stmt),
+                  let uuidStr = columnText(stmt, 1),
+                  let uuid = UUID(uuidString: uuidStr),
+                  let updatedAt = columnDate(stmt, 13)
+            else { return nil }
+            return SessionRun(
+                id: Int(sqlite3_column_int64(stmt, 0)),
+                clientUUID: uuid,
+                sessionID: columnInt(stmt, 2) ?? 0,
+                runTemplateID: columnInt(stmt, 3),
+                runOrder: columnInt(stmt, 4) ?? 0,
+                actualDistanceKm: columnDouble(stmt, 5),
+                durationSecs: columnInt(stmt, 6),
+                avgPaceSecs: columnInt(stmt, 7),
+                avgHR: columnInt(stmt, 8),
+                maxHR: columnInt(stmt, 9),
+                targetHRMin: columnInt(stmt, 10),
+                targetHRMax: columnInt(stmt, 11),
+                notes: columnText(stmt, 12),
+                updatedAt: updatedAt
+            )
+        }
+    }
+
     // MARK: - Delete
 
     func delete(id: UUID) async throws {

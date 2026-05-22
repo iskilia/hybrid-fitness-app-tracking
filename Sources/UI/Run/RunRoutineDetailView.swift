@@ -18,13 +18,17 @@ struct RunRoutineDetailView: View {
             VStack(alignment: .leading, spacing: AppSpacing.xl) {
                 headerSection
                 runList
+                lastExecutionSection
             }
             .padding(AppSpacing.lg)
         }
         .background(AppColor.background)
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom) { startButton }
-        .task { await viewModel.load(routineID: routineID) }
+        .task {
+            await viewModel.load(routineID: routineID)
+            await viewModel.loadLastExecution(routineID: routineID)
+        }
     }
 
     // MARK: - Header
@@ -64,6 +68,20 @@ struct RunRoutineDetailView: View {
                 .background(AppColor.surface)
                 .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
         }
+    }
+
+    // MARK: - Last execution card
+
+    private var lastExecutionSection: some View {
+        LastExecutionCard(
+            summary: viewModel.lastExecutionSummary,
+            isLoading: viewModel.isLoadingLastExecution,
+            onTap: {
+                if let s = viewModel.lastExecutionSummary {
+                    router?.push(.session(s.sessionID))
+                }
+            }
+        )
     }
 
     // MARK: - Start button
