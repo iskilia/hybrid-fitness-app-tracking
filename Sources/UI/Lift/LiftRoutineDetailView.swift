@@ -18,6 +18,7 @@ struct LiftRoutineDetailView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     headerSection
                     exerciseListSection
+                    lastExecutionSection
                 }
                 .padding(.bottom, 100)  // space for START button
             }
@@ -27,7 +28,10 @@ struct LiftRoutineDetailView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { addExerciseButton }
-        .task { await viewModel.load(routineID: routineID) }
+        .task {
+            await viewModel.load(routineID: routineID)
+            await viewModel.loadLastExecution(routineID: routineID)
+        }
         .sheet(isPresented: $showExerciseLibrary) {
             if let db = dbManager {
                 ExerciseLibraryView(dbManager: db, onSelect: { _ in
@@ -118,6 +122,20 @@ private extension LiftRoutineDetailView {
         return Text(labelText)
             .font(AppFont.captionMono)
             .foregroundStyle(AppColor.textSecondary)
+    }
+
+    var lastExecutionSection: some View {
+        LastExecutionCard(
+            summary: viewModel.lastExecutionSummary,
+            isLoading: viewModel.isLoadingLastExecution,
+            onTap: {
+                if let summary = viewModel.lastExecutionSummary {
+                    router?.push(.session(summary.sessionID))
+                }
+            }
+        )
+        .padding(.horizontal, AppSpacing.lg)
+        .padding(.top, AppSpacing.xl)
     }
 
     var startButton: some View {

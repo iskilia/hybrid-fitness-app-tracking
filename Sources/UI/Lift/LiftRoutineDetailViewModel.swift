@@ -21,15 +21,19 @@ final class LiftRoutineDetailViewModel {
     var entries: [LiftRoutineDetailEntry] = []
     var isLoading = false
     var errorMessage: String?
+    var lastExecutionSummary: LastExecutionSummary? = nil
+    var isLoadingLastExecution: Bool = false
 
     private let routineRepo: RoutineRepository
     private let exerciseRepo: ExerciseRepository
     private let sessionSetRepo: SessionSetRepository
+    private let sessionRepo: SessionRepository
 
     init(dbManager: DatabaseManager) {
         self.routineRepo = RoutineRepository(dbManager: dbManager)
         self.exerciseRepo = ExerciseRepository(dbManager: dbManager)
         self.sessionSetRepo = SessionSetRepository(dbManager: dbManager)
+        self.sessionRepo = SessionRepository(dbManager: dbManager)
     }
 
     func load(routineID: UUID) async {
@@ -72,6 +76,90 @@ final class LiftRoutineDetailViewModel {
             self.entries = built
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - TV5.2a: Load last execution summary
+
+    func loadLastExecution(routineID: UUID) async {
+        isLoadingLastExecution = true
+        defer { isLoadingLastExecution = false }
+        do {
+            // Resolve routine (use already-loaded value if available)
+            let r: Routine
+            if let loaded = routine {
+                r = loaded
+            } else {
+                guard let fetched = try await routineRepo.get(id: routineID) else {
+                    lastExecutionSummary = nil
+                    return
+                }
+                r = fetched
+            }
+
+            guard let session = try await sessionRepo.lastCompletedSession(forRoutineID: r.id) else {
+                lastExecutionSummary = nil
+                return
+            }
+
+            let finishedAt = session.finishedAt!
+            let totalDurationSecs = Int(finishedAt.timeIntervalSince(session.startedAt))
+
+            // Build the set of exercise integer IDs in the current routine
+            let currentExercises = entries.map { $0.exercise }
+            let currentExerciseIDs = Set(currentExercises.map { $0.id })
+
+            // Build TopSetLine for each exercise in the current routine
+            var lines: [LastExecutionSummary.TopSetLine] = []
+            for exercise in currentExercises {
+                if let topSet = try await sessionSetRepo.topSet(sessionID: session.id, exerciseID: exercise.id) {
+                    lines.append(LastExecutionSummary.TopSetLine(
+                        id: exercise.clientUUID,
+                        exerciseName: exercise.name,
+                        display: formatTopSet(topSet, metricType: exercise.metricType),
+                        removed: false
+                    ))
+                }
+            }
+
+            // Detect removed exercises: iterate all exercises, find those with a top set
+            // in this session but not in the current routine
+            let allExercises = try await exerciseRepo.listAll()
+            for exercise in allExercises where !currentExerciseIDs.contains(exercise.id) {
+                if let topSet = try await sessionSetRepo.topSet(sessionID: session.id, exerciseID: exercise.id) {
+                    lines.append(LastExecutionSummary.TopSetLine(
+                        id: exercise.clientUUID,
+                        exerciseName: exercise.name,
+                        display: formatTopSet(topSet, metricType: exercise.metricType),
+                        removed: true
+                    ))
+                }
+            }
+
+            lastExecutionSummary = LastExecutionSummary(
+                sessionID: session.clientUUID,
+                finishedAt: finishedAt,
+                totalDurationSecs: totalDurationSecs,
+                topSets: lines
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+            lastExecutionSummary = nil
+        }
+    }
+
+    // MARK: - Private helpers
+
+    private func formatTopSet(_ set: SessionSet, metricType: MetricType) -> String {
+        switch metricType {
+        case .reps, .repsBodyweight:
+            return "× \(set.reps ?? 0)"
+        case .time:
+            return "\(set.durationSecs ?? 0)s"
+        case .distance:
+            let mDouble = set.distanceM ?? 0
+            let m = Int(mDouble)
+            return m >= 1000 ? String(format: "%.2f km", mDouble / 1000.0) : "\(m) m"
         }
     }
 }
