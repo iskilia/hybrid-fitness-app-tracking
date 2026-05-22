@@ -14,6 +14,7 @@ struct ExerciseCardView: View {
                 SetRow(
                     setIndex: index + 1,
                     prevDisplay: prevDisplay(for: index),
+                    metricType: card.exercise.metricType,
                     row: row,
                     onCommit: { onCommitRow(row) }
                 )
@@ -60,10 +61,15 @@ struct ExerciseCardView: View {
                 .frame(width: 20, alignment: .center)
             Text("PREV")
                 .frame(maxWidth: .infinity, alignment: .center)
-            Text("KG")
-                .frame(maxWidth: .infinity, alignment: .center)
-            Text("REPS")
-                .frame(maxWidth: .infinity, alignment: .center)
+            if card.exercise.metricType == .time {
+                Text("SECS")
+                    .frame(maxWidth: .infinity, alignment: .center)
+            } else {
+                Text("KG")
+                    .frame(maxWidth: .infinity, alignment: .center)
+                Text("REPS")
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
             Text("RPE")
                 .frame(maxWidth: .infinity, alignment: .center)
             Image(systemName: "checkmark")
@@ -94,11 +100,16 @@ struct ExerciseCardView: View {
         return a.isEmpty ? String(card.exercise.name.prefix(3)).uppercased() : a
     }
 
-    /// Show the previous row's weight × reps as the "prev" hint for the current row.
+    /// Show the previous row's stats as the "prev" hint for the current row.
     private func prevDisplay(for index: Int) -> String? {
         guard index > 0 else { return nil }
         let prev = card.rows[index - 1]
-        guard !prev.weightText.isEmpty || !prev.repsText.isEmpty else { return nil }
-        return "\(prev.weightText.isEmpty ? "—" : prev.weightText)×\(prev.repsText.isEmpty ? "—" : prev.repsText)"
+        if card.exercise.metricType == .time {
+            guard !prev.durationSecsText.isEmpty else { return nil }
+            return "\(prev.durationSecsText)s"
+        } else {
+            guard !prev.weightText.isEmpty || !prev.repsText.isEmpty else { return nil }
+            return "\(prev.weightText.isEmpty ? "—" : prev.weightText)×\(prev.repsText.isEmpty ? "—" : prev.repsText)"
+        }
     }
 }

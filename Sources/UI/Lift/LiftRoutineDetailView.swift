@@ -86,23 +86,36 @@ private extension LiftRoutineDetailView {
 
     func repRangeLabel(for entry: LiftRoutineDetailEntry) -> some View {
         let re = entry.routineExercise
-        let weightText: String
-        if let w = entry.lastWeightKg {
-            weightText = w.truncatingRemainder(dividingBy: 1) == 0
-                ? "\(Int(w))KG"
-                : String(format: "%.1fKG", w)
+        let labelText: String
+        // Editor not yet exposed in UI; once a planner-editor is added, it must write to `targetDurationSecsMin/Max` for `.time` exercises.
+        if entry.exercise.metricType == .time {
+            if let lo = re.targetDurationSecsMin, let hi = re.targetDurationSecsMax {
+                labelText = "\(lo)–\(hi)s"
+            } else if let lo = re.targetDurationSecsMin {
+                labelText = "\(lo)s+"
+            } else {
+                labelText = "--"
+            }
         } else {
-            weightText = "--"
+            let weightText: String
+            if let w = entry.lastWeightKg {
+                weightText = w.truncatingRemainder(dividingBy: 1) == 0
+                    ? "\(Int(w))KG"
+                    : String(format: "%.1fKG", w)
+            } else {
+                weightText = "--"
+            }
+            let repText: String
+            if let lo = re.targetRepMin, let hi = re.targetRepMax {
+                repText = "\(lo)–\(hi)"
+            } else if let lo = re.targetRepMin {
+                repText = "\(lo)+"
+            } else {
+                repText = "--"
+            }
+            labelText = "\(weightText) × \(repText)"
         }
-        let repText: String
-        if let lo = re.targetRepMin, let hi = re.targetRepMax {
-            repText = "\(lo)–\(hi)"
-        } else if let lo = re.targetRepMin {
-            repText = "\(lo)+"
-        } else {
-            repText = "--"
-        }
-        return Text("\(weightText) × \(repText)")
+        return Text(labelText)
             .font(AppFont.captionMono)
             .foregroundStyle(AppColor.textSecondary)
     }

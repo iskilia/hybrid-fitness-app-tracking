@@ -4,8 +4,8 @@ struct CustomExerciseEditorView: View {
     @State private var viewModel: CustomExerciseEditorViewModel
     @Environment(\.dismiss) private var dismiss
 
-    init(dbManager: DatabaseManager) {
-        self._viewModel = State(initialValue: CustomExerciseEditorViewModel(dbManager: dbManager))
+    init(dbManager: DatabaseManager, editingExerciseID: Int? = nil) {
+        self._viewModel = State(initialValue: CustomExerciseEditorViewModel(dbManager: dbManager, editingExerciseID: editingExerciseID))
     }
 
     var body: some View {
@@ -58,12 +58,36 @@ private extension CustomExerciseEditorView {
     var metricTypeSection: some View {
         Section("METRIC TYPE") {
             Picker("Metric", selection: $viewModel.metricType) {
-                Text("Reps").tag(MetricType.reps)
+                Text("Reps").tag(MetricType.repsBodyweight)
+                Text("Reps + Weight").tag(MetricType.reps)
                 Text("Time").tag(MetricType.time)
-                Text("Distance").tag(MetricType.distance)
-                Text("Bodyweight Reps").tag(MetricType.repsBodyweight)
             }
             .pickerStyle(.segmented)
+            .disabled(viewModel.isMetricTypeLocked)
+
+            VStack(alignment: .leading, spacing: 2) {
+                switch viewModel.metricType {
+                case .repsBodyweight:
+                    Text("e.g. Push-Ups (3 × 12)")
+                        .font(AppFont.caption)
+                        .foregroundStyle(AppColor.textSecondary)
+                case .reps:
+                    Text("e.g. Bench Press (3 × 8 @ 80 kg)")
+                        .font(AppFont.caption)
+                        .foregroundStyle(AppColor.textSecondary)
+                case .time:
+                    Text("e.g. Plank (3 × 30–45s)")
+                        .font(AppFont.caption)
+                        .foregroundStyle(AppColor.textSecondary)
+                default:
+                    EmptyView()
+                }
+                if viewModel.isMetricTypeLocked {
+                    Text("Locked — already used in completed sets.")
+                        .font(AppFont.caption)
+                        .foregroundStyle(AppColor.textSecondary)
+                }
+            }
         }
     }
 

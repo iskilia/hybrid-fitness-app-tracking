@@ -4,6 +4,7 @@ import SwiftUI
 struct SetRow: View {
     let setIndex: Int
     let prevDisplay: String?
+    let metricType: MetricType
     @Bindable var row: SetRowState
     let onCommit: () -> Void
 
@@ -21,21 +22,31 @@ struct SetRow: View {
                 .foregroundStyle(AppColor.textSecondary)
                 .frame(maxWidth: .infinity, alignment: .center)
 
-            // Weight
-            TextField("KG", text: $row.weightText)
-                .font(AppFont.captionMono)
-                .keyboardType(.decimalPad)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity)
-                .onSubmit { onCommit() }
+            if metricType == .time {
+                // Timed hold: single seconds field
+                TextField("Seconds", text: $row.durationSecsText)
+                    .font(AppFont.captionMono)
+                    .keyboardType(.numberPad)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .onSubmit { onCommit() }
+            } else {
+                // Weight
+                TextField("KG", text: $row.weightText)
+                    .font(AppFont.captionMono)
+                    .keyboardType(.decimalPad)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .onSubmit { onCommit() }
 
-            // Reps
-            TextField("Reps", text: $row.repsText)
-                .font(AppFont.captionMono)
-                .keyboardType(.numberPad)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity)
-                .onSubmit { onCommit() }
+                // Reps
+                TextField("Reps", text: $row.repsText)
+                    .font(AppFont.captionMono)
+                    .keyboardType(.numberPad)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .onSubmit { onCommit() }
+            }
 
             // RPE
             TextField("RPE", text: $row.rpeText)
