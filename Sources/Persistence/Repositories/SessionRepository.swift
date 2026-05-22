@@ -77,6 +77,7 @@ struct SessionRepository {
             bindDate(stmt, 2, now)
             bindUUID(stmt, 3, id)
             _ = try step(stmt)
+            SnapshotHook.notifyChange()
         }
     }
 

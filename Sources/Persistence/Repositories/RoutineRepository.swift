@@ -59,6 +59,7 @@ struct RoutineRepository {
             try insertRoutine(db, routine)
             for entry in exerciseEntries { try insertRoutineExercise(db, entry) }
             for entry in runEntries { try insertRoutineRun(db, entry) }
+            SnapshotHook.notifyChange()
         }
     }
 
@@ -99,6 +100,7 @@ struct RoutineRepository {
 
             for entry in exerciseEntries { try insertRoutineExercise(db, entry) }
             for entry in runEntries { try insertRoutineRun(db, entry) }
+            SnapshotHook.notifyChange()
         }
     }
 
@@ -114,6 +116,7 @@ struct RoutineRepository {
             bindDate(stmt, 2, now)
             bindUUID(stmt, 3, id)
             _ = try step(stmt)
+            SnapshotHook.notifyChange()
         }
     }
 
