@@ -506,6 +506,13 @@ final class Phase2RepositoryTests: XCTestCase {
     // MARK: - 12. Routine cap (10 max)
 
     func testRoutineCapEnforcement() async throws {
+        // V3 seed inserts 3 sample routines; clear them so the cap test starts
+        // from zero against the 10-routine ceiling.
+        let existing = try await routines.list()
+        for r in existing {
+            try await routines.softDelete(id: r.clientUUID)
+        }
+
         let now = Date()
         for i in 0..<10 {
             let r = Routine(

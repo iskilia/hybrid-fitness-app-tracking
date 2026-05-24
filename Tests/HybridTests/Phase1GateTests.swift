@@ -492,15 +492,30 @@ final class Phase1GateTests: XCTestCase {
         XCTAssertEqual(Set(re2Rows.map { $0.3 }), [12])
     }
 
-    /// Fresh install: SeedData inserts no routines, so V3 backfill is a no-op.
+    /// Fresh install with no routine_exercise rows: V3 backfill is a no-op.
+    /// Migrating an empty schema without seed produces zero set rows.
     func testV3MigrationOnFreshInstall_NoRoutineExerciseRows_BackfillIsNoop() throws {
+        let db = try unwrapDB()
+        try migrate(db)
+        // Skip seedIfEmpty here — V3 seed now inserts sample routines.
+
+        let count = try scalarInt(db, "SELECT COUNT(*) FROM routine_exercise_set;")
+        XCTAssertEqual(count, 0,
+                       "Fresh schema with no routine_exercise rows → backfill produces zero set rows")
+    }
+
+    /// V3 seed inserts sample routines (Push Day, Core & Holds, Tempo Tuesday)
+    /// with per-set plans. Verify they land after seedIfEmpty on a fresh DB.
+    func testV3SeedInsertsSampleRoutinesAndPlannedSets() throws {
         let db = try unwrapDB()
         try migrate(db)
         try seedIfEmpty(db)
 
-        let count = try scalarInt(db, "SELECT COUNT(*) FROM routine_exercise_set;")
-        XCTAssertEqual(count, 0,
-                       "Fresh install has no routine_exercise rows; backfill must produce zero set rows")
+        let routineCount = try scalarInt(db, "SELECT COUNT(*) FROM routine;") ?? 0
+        XCTAssertEqual(routineCount, 3, "V3 seed inserts 3 sample routines")
+
+        let plannedSetCount = try scalarInt(db, "SELECT COUNT(*) FROM routine_exercise_set;") ?? 0
+        XCTAssertGreaterThan(plannedSetCount, 0, "V3 seed inserts planned set rows for sample routines")
     }
 
     // MARK: - Helpers
