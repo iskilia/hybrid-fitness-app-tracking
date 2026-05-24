@@ -66,6 +66,44 @@ struct RoutineExercise: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
+// MARK: - routine_exercise_set (V3)
+
+enum RoutineExerciseSetType: String, Codable, Sendable {
+    case warmup  = "WARMUP"
+    case working = "WORKING"
+    case backoff = "BACKOFF"
+}
+
+struct RoutineExerciseSet: Codable, Identifiable, Hashable, Sendable {
+    let id: Int
+    let clientUUID: UUID
+    let routineExerciseID: Int
+    let setNumber: Int
+    let setType: RoutineExerciseSetType
+    let targetWeightKg: Double?
+    let targetRepsMin: Int?
+    let targetRepsMax: Int?
+    let targetDurationSecsMin: Int?
+    let targetDurationSecsMax: Int?
+    let notes: String?
+    let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case clientUUID            = "client_uuid"
+        case routineExerciseID     = "routine_exercise_id"
+        case setNumber             = "set_number"
+        case setType               = "set_type"
+        case targetWeightKg        = "target_weight_kg"
+        case targetRepsMin         = "target_reps_min"
+        case targetRepsMax         = "target_reps_max"
+        case targetDurationSecsMin = "target_duration_secs_min"
+        case targetDurationSecsMax = "target_duration_secs_max"
+        case notes
+        case updatedAt             = "updated_at"
+    }
+}
+
 // MARK: - routine_run
 
 struct RoutineRun: Codable, Identifiable, Hashable, Sendable {
