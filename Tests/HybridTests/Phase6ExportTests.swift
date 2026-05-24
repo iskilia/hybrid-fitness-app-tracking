@@ -76,7 +76,255 @@ final class Phase6ExportTests: XCTestCase {
         XCTAssertEqual(CSVExporter.csvEscape("a\nb"), "\"a\nb\"")
     }
 
+    // MARK: - Phase V3 gate (SnapshotWriter + SchemaDoc)
+
+    func testSnapshotWriterProducesJSONWithSchemaVersionAndData() async throws {
+        let env = try makeSnapshotEnv()
+        defer { cleanupSnapshotEnv(env) }
+
+        let writer = SnapshotWriter(documentsURL: env.docsURL, dbManager: env.dbm)
+        await writer.write()
+
+        let target = env.docsURL.appendingPathComponent("hybrid-latest.json")
+        let appeared = await waitForFile(at: target, timeoutSecs: 3.0)
+        XCTAssertTrue(appeared, "hybrid-latest.json never appeared at \(target.path)")
+
+        let data = try Data(contentsOf: target)
+        let parsed = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let root = try XCTUnwrap(parsed, "hybrid-latest.json did not parse as a JSON object")
+
+        XCTAssertEqual(root["schema_version"] as? String, "2.0",
+                       "top-level schema_version should equal \"2.0\"")
+        let dataDict = try XCTUnwrap(root["data"] as? [String: Any],
+                                     "top-level \"data\" should be an object")
+
+        // Mirrors JSONExporter payload (schema_meta is migration metadata, not exported).
+        let allTables = [
+            "equipment", "muscle", "tag", "user_profile",
+            "exercise", "exercise_muscle",
+            "run_template", "run_interval_block",
+            "routine", "routine_exercise", "routine_run",
+            "session", "session_tag", "session_set",
+            "session_run", "session_run_split",
+        ]
+        for table in allTables {
+            XCTAssertNotNil(dataDict[table], "data.\(table) missing from snapshot")
+        }
+
+        let mode = await writer.lastWriteMode
+        XCTAssertEqual(mode, .full, "lastWriteMode should be .full for a normal-sized DB")
+    }
+
+    func testSnapshotWriterDebouncesConcurrentCalls() async throws {
+        let env = try makeSnapshotEnv()
+        defer { cleanupSnapshotEnv(env) }
+
+        let writer = SnapshotWriter(documentsURL: env.docsURL, dbManager: env.dbm)
+
+        let firstCallAt = Date()
+        for _ in 0..<5 {
+            await writer.write()
+        }
+
+        // Debounce is 250 ms; allow generous settle time for the export to complete.
+        try await Task.sleep(nanoseconds: 2_000_000_000) // 2 s
+
+        let target = env.docsURL.appendingPathComponent("hybrid-latest.json")
+        let temp = env.docsURL.appendingPathComponent("hybrid-latest.tmp.json")
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: target.path),
+                      "hybrid-latest.json missing after debounce settle")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: temp.path),
+                       "hybrid-latest.tmp.json straggler left behind after settle")
+
+        let attrs = try FileManager.default.attributesOfItem(atPath: target.path)
+        let mtime = try XCTUnwrap(attrs[.modificationDate] as? Date,
+                                  "modificationDate attribute missing")
+        let elapsed = mtime.timeIntervalSince(firstCallAt)
+        XCTAssertGreaterThanOrEqual(elapsed, 0.25,
+                                    "file mtime should be at least 250 ms after first write() call; got \(elapsed)s")
+
+        // Only one snapshot file should be present (no rotation/duplicates).
+        let names = try FileManager.default.contentsOfDirectory(atPath: env.docsURL.path)
+        let snapshots = names.filter { $0 == "hybrid-latest.json" }
+        XCTAssertEqual(snapshots.count, 1, "expected exactly one hybrid-latest.json; got \(names)")
+
+        let mode = await writer.lastWriteMode
+        XCTAssertEqual(mode, .full, "lastWriteMode should be .full for a normal-sized DB")
+    }
+
+    func testSnapshotWriterFallsBackToManifestWhenDBExceedsThreshold() async throws {
+        let env = try makeSnapshotEnv()
+        defer { cleanupSnapshotEnv(env) }
+
+        // 1-byte threshold: the on-disk SQLite file is guaranteed larger.
+        let writer = SnapshotWriter(
+            documentsURL: env.docsURL,
+            dbManager: env.dbm,
+            sizeThresholdBytes: 1
+        )
+        await writer.write()
+
+        let target = env.docsURL.appendingPathComponent("hybrid-latest.json")
+        let appeared = await waitForFile(at: target, timeoutSecs: 3.0)
+        XCTAssertTrue(appeared, "manifest hybrid-latest.json never appeared")
+
+        let data = try Data(contentsOf: target)
+        let root = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: data) as? [String: Any],
+            "manifest did not parse as JSON object"
+        )
+
+        XCTAssertEqual(root["schema_version"] as? String, "2.0")
+        XCTAssertEqual(root["mode"] as? String, "manifest")
+        let sizeBytes = root["db_size_bytes"] as? Int ?? -1
+        XCTAssertGreaterThan(sizeBytes, 0, "db_size_bytes should be a positive integer")
+
+        let mode = await writer.lastWriteMode
+        XCTAssertEqual(mode, .manifest, "lastWriteMode should be .manifest when threshold exceeded")
+    }
+
+    func testSchemaDocWriteProducesHybridSchemaMd() throws {
+        let docs = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: docs, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: docs) }
+
+        try SchemaDoc.write(to: docs)
+
+        let dest = docs.appendingPathComponent("hybrid-schema.md")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: dest.path),
+                      "hybrid-schema.md not written at \(dest.path)")
+
+        let onDisk = try String(contentsOf: dest, encoding: .utf8)
+        XCTAssertEqual(onDisk, SchemaDoc.markdown,
+                       "hybrid-schema.md content drifted from SchemaDoc.markdown")
+        XCTAssertTrue(onDisk.contains("schema_version"),
+                      "schema doc missing 'schema_version' contract content")
+        XCTAssertTrue(onDisk.contains("metric_type"),
+                      "schema doc missing 'metric_type' contract content")
+        XCTAssertTrue(onDisk.contains("## Envelope"),
+                      "schema doc missing '## Envelope' section")
+        XCTAssertEqual(SchemaDoc.schemaVersion, "2.0",
+                       "SchemaDoc.schemaVersion should be \"2.0\"")
+    }
+
+    // MARK: - Snapshot test helpers
+
+    private struct SnapshotEnv {
+        let dbm: DatabaseManager
+        let dbURL: URL
+        let docsURL: URL
+    }
+
+    private func makeSnapshotEnv() throws -> SnapshotEnv {
+        let tmp = FileManager.default.temporaryDirectory
+        let dbURL = tmp.appendingPathComponent(UUID().uuidString + ".sqlite")
+        let docsURL = tmp.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: docsURL, withIntermediateDirectories: true)
+        // DatabaseManager(url:) runs migrate + seedIfEmpty internally.
+        let dbm = try DatabaseManager(url: dbURL)
+        return SnapshotEnv(dbm: dbm, dbURL: dbURL, docsURL: docsURL)
+    }
+
+    private func cleanupSnapshotEnv(_ env: SnapshotEnv) {
+        try? FileManager.default.removeItem(at: env.docsURL)
+        try? FileManager.default.removeItem(at: env.dbURL)
+        // SQLite may also leave -wal / -shm sidecars.
+        let wal = env.dbURL.path + "-wal"
+        let shm = env.dbURL.path + "-shm"
+        try? FileManager.default.removeItem(atPath: wal)
+        try? FileManager.default.removeItem(atPath: shm)
+    }
+
+    private func waitForFile(at url: URL, timeoutSecs: Double = 2.0) async -> Bool {
+        let start = Date()
+        while Date().timeIntervalSince(start) < timeoutSecs {
+            if FileManager.default.fileExists(atPath: url.path) { return true }
+            try? await Task.sleep(nanoseconds: 50_000_000) // 50 ms
+        }
+        return false
+    }
+
     // MARK: - Helpers
+
+    // MARK: - Phase V7 — TV7.1 case #5: Export round-trips a timed set
+
+    func testJSONExportRoundTripsTimedSet() async throws {
+        // Plank seed = TIME, id 29.
+        let plankUUID = UUID(uuidString: "00000000-0000-0000-0001-000000000029")!
+        let session = try await sessions.start(routineID: nil, type: .lift)
+        let plankRowID = try await db.read { handle in
+            let stmt = try Hybrid.prepare(handle, "SELECT id FROM exercise WHERE client_uuid = '\(plankUUID.uuidString.lowercased())';")
+            defer { Hybrid.finalize(stmt) }
+            guard try Hybrid.step(stmt) else { return 0 }
+            return Int(sqlite3_column_int64(stmt, 0))
+        }
+        try await sets.append(SessionSet(
+            id: 0, clientUUID: UUID(),
+            sessionID: session.id, exerciseID: plankRowID,
+            exerciseOrder: 0, setNumber: 1,
+            setType: .working,
+            weightKg: nil, reps: nil,
+            durationSecs: 45, distanceM: nil,
+            rpe: nil, completedAt: Date(),
+            notes: nil, updatedAt: Date()
+        ))
+        try await sessions.finish(id: session.clientUUID)
+
+        let file = try await JSONExporter(dbManager: db).export()
+        let data = try Data(contentsOf: file)
+        let parsed = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let root = try XCTUnwrap(parsed)
+        let setsArr = try XCTUnwrap(root["session_set"] as? [[String: Any]],
+                                    "JSON export missing session_set")
+
+        // Find our timed row by exercise_id + duration_secs.
+        let timedRow = setsArr.first { row in
+            (row["exercise_id"] as? Int) == plankRowID
+                && (row["duration_secs"] as? Int) == 45
+        }
+        XCTAssertNotNil(timedRow,
+                        "JSON export should contain a row with exercise_id=\(plankRowID), duration_secs=45")
+        // Reps should be NSNull or missing for the TIME set.
+        if let row = timedRow {
+            let repsVal = row["reps"]
+            let isNilOrNull = (repsVal == nil) || (repsVal is NSNull)
+            XCTAssertTrue(isNilOrNull,
+                          "Timed set row should not carry a non-null reps value")
+        }
+    }
+
+    // MARK: - Phase V7 — TV7.1 case #11: auto-toggle OFF → session finish does not modify hybrid-latest.json mtime
+
+    func testSnapshotHookNoopWhenAutoDisabled() async throws {
+        let env = try makeSnapshotEnv()
+        defer { cleanupSnapshotEnv(env) }
+
+        let writer = SnapshotWriter(documentsURL: env.docsURL, dbManager: env.dbm)
+
+        // Snapshot Hook state. Reset to true on exit so other tests are unaffected.
+        let priorAuto = SnapshotHook.isAutoEnabled
+        let priorCurrent = SnapshotHook.current
+        defer {
+            SnapshotHook.isAutoEnabled = priorAuto
+            SnapshotHook.current = priorCurrent
+        }
+        SnapshotHook.current = writer
+        SnapshotHook.isAutoEnabled = false
+
+        // Fire the hook the same way SessionRepository.finish does.
+        SnapshotHook.notifyChange()
+
+        // Wait > debounce (250 ms) + a margin to be sure no write fires.
+        try await Task.sleep(nanoseconds: 800_000_000) // 800 ms
+
+        let target = env.docsURL.appendingPathComponent("hybrid-latest.json")
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: target.path),
+            "hybrid-latest.json should NOT be created when auto-update is OFF"
+        )
+    }
 
     private func seedMinimalSession() async throws {
         let session = try await sessions.start(routineID: nil, type: .lift)

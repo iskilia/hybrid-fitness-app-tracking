@@ -26,12 +26,16 @@ final class CustomExerciseEditorViewModel {
 
     var allEquipment: [Equipment] = []
     var isSaving = false
+    var isMetricTypeLocked = false
     var errorMessage: String?
     var didSave = false
 
+    /// Non-nil when editing an existing exercise (integer row ID).
+    private let editingExerciseID: Int?
     private let exerciseRepo: ExerciseRepository
 
-    init(dbManager: DatabaseManager) {
+    init(dbManager: DatabaseManager, editingExerciseID: Int? = nil) {
+        self.editingExerciseID = editingExerciseID
         self.exerciseRepo = ExerciseRepository(dbManager: dbManager)
     }
 
@@ -43,6 +47,10 @@ final class CustomExerciseEditorViewModel {
             self.allEquipment = eq
             self.selectedEquipmentID = eq.first?.id
             self.muscleSelections = mu.map { MuscleSelection(muscle: $0, isSelected: false, role: .primary) }
+
+            if let exerciseID = editingExerciseID {
+                self.isMetricTypeLocked = try await exerciseRepo.metricTypeLocked(exerciseID: exerciseID)
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -59,7 +67,7 @@ final class CustomExerciseEditorViewModel {
         do {
             let now = Date()
             let exercise = Exercise(
-                id: 0,
+                id: editingExerciseID ?? 0,
                 clientUUID: UUID(),
                 name: name.trimmingCharacters(in: .whitespaces),
                 abbreviation: String(abbreviation.prefix(4)).uppercased(),
@@ -79,8 +87,18 @@ final class CustomExerciseEditorViewModel {
                     let muscleUUID = encodeMuscleID(sel.muscle.id)
                     return (muscleUUID, sel.role)
                 }
-            try await exerciseRepo.create(exercise, muscles: musclePairs)
+            if editingExerciseID != nil {
+                try await exerciseRepo.update(exercise, muscles: musclePairs)
+            } else {
+                try await exerciseRepo.create(exercise, muscles: musclePairs)
+            }
             didSave = true
+        } catch let dbErr as DatabaseError {
+            if case .conflict(let msg) = dbErr {
+                errorMessage = msg
+            } else {
+                errorMessage = dbErr.localizedDescription
+            }
         } catch {
             errorMessage = error.localizedDescription
         }

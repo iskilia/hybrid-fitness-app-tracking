@@ -59,6 +59,7 @@ struct RoutineRepository {
             try insertRoutine(db, routine)
             for entry in exerciseEntries { try insertRoutineExercise(db, entry) }
             for entry in runEntries { try insertRoutineRun(db, entry) }
+            SnapshotHook.notifyChange()
         }
     }
 
@@ -99,6 +100,7 @@ struct RoutineRepository {
 
             for entry in exerciseEntries { try insertRoutineExercise(db, entry) }
             for entry in runEntries { try insertRoutineRun(db, entry) }
+            SnapshotHook.notifyChange()
         }
     }
 
@@ -114,6 +116,7 @@ struct RoutineRepository {
             bindDate(stmt, 2, now)
             bindUUID(stmt, 3, id)
             _ = try step(stmt)
+            SnapshotHook.notifyChange()
         }
     }
 
@@ -163,8 +166,9 @@ struct RoutineRepository {
         let sql = """
             INSERT INTO routine_exercise
                 (client_uuid, routine_id, exercise_id, sort_order,
-                 target_sets, target_rep_min, target_rep_max, target_rpe, notes, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                 target_sets, target_rep_min, target_rep_max, target_rpe,
+                 target_duration_secs_min, target_duration_secs_max, notes, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """
         let stmt = try prepare(db, sql)
         defer { finalize(stmt) }
@@ -176,8 +180,10 @@ struct RoutineRepository {
         bindInt(stmt, 6, e.targetRepMin)
         bindInt(stmt, 7, e.targetRepMax)
         bindDouble(stmt, 8, e.targetRPE)
-        bindText(stmt, 9, e.notes)
-        bindDate(stmt, 10, e.updatedAt)
+        bindInt(stmt, 9, e.targetDurationSecsMin)
+        bindInt(stmt, 10, e.targetDurationSecsMax)
+        bindText(stmt, 11, e.notes)
+        bindDate(stmt, 12, e.updatedAt)
         _ = try step(stmt)
     }
 
@@ -209,7 +215,8 @@ struct RoutineRepository {
 
             let sql = """
                 SELECT id, client_uuid, routine_id, exercise_id, sort_order,
-                       target_sets, target_rep_min, target_rep_max, target_rpe, notes, updated_at
+                       target_sets, target_rep_min, target_rep_max, target_rpe,
+                       target_duration_secs_min, target_duration_secs_max, notes, updated_at
                 FROM routine_exercise
                 WHERE routine_id = ?
                 ORDER BY sort_order ASC;
@@ -222,7 +229,7 @@ struct RoutineRepository {
                 guard
                     let uuidStr = columnText(stmt, 1),
                     let uuid = UUID(uuidString: uuidStr),
-                    let updatedAt = columnDate(stmt, 10)
+                    let updatedAt = columnDate(stmt, 12)
                 else { continue }
                 result.append(RoutineExercise(
                     id: Int(sqlite3_column_int64(stmt, 0)),
@@ -234,7 +241,9 @@ struct RoutineRepository {
                     targetRepMin: columnInt(stmt, 6),
                     targetRepMax: columnInt(stmt, 7),
                     targetRPE: columnDouble(stmt, 8),
-                    notes: columnText(stmt, 9),
+                    targetDurationSecsMin: columnInt(stmt, 9),
+                    targetDurationSecsMax: columnInt(stmt, 10),
+                    notes: columnText(stmt, 11),
                     updatedAt: updatedAt
                 ))
             }

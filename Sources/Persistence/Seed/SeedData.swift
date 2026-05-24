@@ -39,6 +39,7 @@ private func insertEquipment(_ db: OpaquePointer) throws {
         (6, "KETTLEBELL", "Kettlebell"),
         (7, "BAND",       "Band"),
         (8, "SLED",       "Sled"),
+        (9, "PULLUP_BAR", "Pull-up Bar"),
     ]
     for r in rows {
         try exec(db: db, sql: """
@@ -66,6 +67,9 @@ private func insertMuscles(_ db: OpaquePointer) throws {
         (11, "CORE",            "Core",            "CORE"),
         (12, "POSTERIOR_CHAIN", "Posterior Chain", "FULL_BODY"),
         (13, "UPPER_CHEST",     "Upper Chest",     "UPPER"),
+        (14, "OBLIQUES",        "Obliques",        "CORE"),
+        (15, "FOREARMS",        "Forearms",        "UPPER"),
+        (16, "HIP_FLEXORS",     "Hip Flexors",     "CORE"),
     ]
     for r in rows {
         try exec(db: db, sql: """
@@ -111,6 +115,7 @@ private struct ExerciseSeed {
     let metricType: String       // REPS | TIME | DISTANCE | REPS_BODYWEIGHT
     let primaryMuscles: [Int]    // muscle IDs
     let secondaryMuscles: [Int]
+    var notes: String? = nil
 }
 
 private func insertExercises(_ db: OpaquePointer) throws {
@@ -207,13 +212,27 @@ private func insertExercises(_ db: OpaquePointer) throws {
         // ID 30 — Russian Twist
         ExerciseSeed(id: 30, name: "Russian Twist",         abbr: "RST", equipmentID: 3,
                      metricType: "REPS",            primaryMuscles: [11],     secondaryMuscles: []),
+        // ID 31 — Wall Sit (TIME · BODYWEIGHT · QUADS · GLUTES)
+        ExerciseSeed(id: 31, name: "Wall Sit",              abbr: "WS",  equipmentID: 3,
+                     metricType: "TIME",             primaryMuscles: [7],      secondaryMuscles: [9]),
+        // ID 32 — Side Plank (TIME · BODYWEIGHT · OBLIQUES · CORE)
+        ExerciseSeed(id: 32, name: "Side Plank",            abbr: "SPL", equipmentID: 3,
+                     metricType: "TIME",             primaryMuscles: [14],     secondaryMuscles: [11],
+                     notes: "Log left and right sides separately if desired."),
+        // ID 33 — Dead Hang (TIME · PULLUP BAR · FOREARMS · LATS)
+        ExerciseSeed(id: 33, name: "Dead Hang",             abbr: "DH",  equipmentID: 9,
+                     metricType: "TIME",             primaryMuscles: [15],     secondaryMuscles: [3]),
+        // ID 34 — L-Sit (TIME · BODYWEIGHT · CORE · HIP FLEXORS)
+        ExerciseSeed(id: 34, name: "L-Sit",                 abbr: "LS",  equipmentID: 3,
+                     metricType: "TIME",             primaryMuscles: [11],     secondaryMuscles: [16]),
     ]
 
     for ex in exercises {
         let uuid = exerciseUUID(ex.id)
+        let notesValue = ex.notes.map { "'\($0.replacingOccurrences(of: "'", with: "''"))'" } ?? "NULL"
         let sql = """
-            INSERT INTO exercise (id, client_uuid, name, abbreviation, equipment_id, metric_type, is_custom, created_at, updated_at)
-            VALUES (\(ex.id), '\(uuid)', '\(ex.name.replacingOccurrences(of: "'", with: "''"))', '\(ex.abbr)', \(ex.equipmentID), '\(ex.metricType)', 0, \(now), \(now));
+            INSERT INTO exercise (id, client_uuid, name, abbreviation, equipment_id, metric_type, is_custom, notes, created_at, updated_at)
+            VALUES (\(ex.id), '\(uuid)', '\(ex.name.replacingOccurrences(of: "'", with: "''"))', '\(ex.abbr)', \(ex.equipmentID), '\(ex.metricType)', 0, \(notesValue), \(now), \(now));
             """
         try exec(db: db, sql: sql)
 

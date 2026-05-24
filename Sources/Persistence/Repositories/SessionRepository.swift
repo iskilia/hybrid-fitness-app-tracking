@@ -77,6 +77,7 @@ struct SessionRepository {
             bindDate(stmt, 2, now)
             bindUUID(stmt, 3, id)
             _ = try step(stmt)
+            SnapshotHook.notifyChange()
         }
     }
 
@@ -130,6 +131,25 @@ struct SessionRepository {
                 result.append(try sessionFromStmt(stmt))
             }
             return result
+        }
+    }
+
+    // MARK: - Last completed session for a routine
+
+    func lastCompletedSession(forRoutineID routineID: Int) async throws -> Session? {
+        try await dbManager.read { db in
+            let sql = sessionSelectSQL() + """
+                 WHERE s.routine_id = ?
+                   AND s.status = 'COMPLETED'
+                   AND s.deleted_at IS NULL
+                 ORDER BY s.finished_at DESC
+                 LIMIT 1;
+                """
+            let stmt = try prepare(db, sql)
+            defer { finalize(stmt) }
+            bindInt(stmt, 1, routineID)
+            guard try step(stmt) else { return nil }
+            return try sessionFromStmt(stmt)
         }
     }
 

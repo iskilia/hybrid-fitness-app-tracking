@@ -46,9 +46,13 @@ struct ExerciseHistoryView: View {
 
     // MARK: - Chart
 
+    private var isTimeExercise: Bool {
+        viewModel.exercise?.metricType == .time
+    }
+
     private var chartSection: some View {
         VStack(alignment: .leading, spacing: AppSpacing.sm) {
-            Text("TOP-SET KG · LAST 12 SESSIONS")
+            Text(isTimeExercise ? "TOP-SET SECS · LAST 12 SESSIONS" : "TOP-SET KG · LAST 12 SESSIONS")
                 .font(AppFont.caption)
                 .foregroundStyle(AppColor.textSecondary)
 
@@ -57,6 +61,32 @@ struct ExerciseHistoryView: View {
                     .font(AppFont.body)
                     .foregroundStyle(AppColor.textSecondary)
                     .frame(height: 160)
+            } else if isTimeExercise {
+                Chart(viewModel.topSets) { point in
+                    LineMark(
+                        x: .value("Date", point.date),
+                        y: .value("Seconds", point.durationSecs ?? 0)
+                    )
+                    .foregroundStyle(AppColor.accent)
+                    PointMark(
+                        x: .value("Date", point.date),
+                        y: .value("Seconds", point.durationSecs ?? 0)
+                    )
+                    .foregroundStyle(AppColor.accent)
+                }
+                .chartXAxis {
+                    AxisMarks(values: .automatic(desiredCount: 4)) { value in
+                        AxisGridLine()
+                        AxisValueLabel(format: .dateTime.month(.abbreviated).day())
+                    }
+                }
+                .chartYAxis {
+                    AxisMarks { value in
+                        AxisGridLine()
+                        AxisValueLabel()
+                    }
+                }
+                .frame(height: 180)
             } else {
                 Chart(viewModel.topSets) { point in
                     LineMark(
@@ -97,11 +127,17 @@ struct ExerciseHistoryView: View {
                         .font(AppFont.body)
                         .foregroundStyle(AppColor.textPrimary)
                     Spacer()
-                    let wStr = point.weightKg.truncatingRemainder(dividingBy: 1) == 0
-                        ? "\(Int(point.weightKg)) KG" : String(format: "%.1f KG", point.weightKg)
-                    Text("\(wStr) × \(point.reps)")
-                        .font(AppFont.captionMono)
-                        .foregroundStyle(AppColor.textSecondary)
+                    if isTimeExercise {
+                        Text("\(point.durationSecs ?? 0)s")
+                            .font(AppFont.captionMono)
+                            .foregroundStyle(AppColor.textSecondary)
+                    } else {
+                        let wStr = point.weightKg.truncatingRemainder(dividingBy: 1) == 0
+                            ? "\(Int(point.weightKg)) KG" : String(format: "%.1f KG", point.weightKg)
+                        Text("\(wStr) × \(point.reps)")
+                            .font(AppFont.captionMono)
+                            .foregroundStyle(AppColor.textSecondary)
+                    }
                     Image(systemName: "chevron.right")
                         .font(AppFont.caption)
                         .foregroundStyle(AppColor.textSecondary)

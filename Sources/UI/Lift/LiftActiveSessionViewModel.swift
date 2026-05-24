@@ -11,16 +11,18 @@ final class SetRowState: Identifiable {
     var weightText: String
     var repsText: String
     var rpeText: String
+    var durationSecsText: String
     var isCompleted: Bool
 
     /// The persisted SessionSet once written to DB (used for updates).
     var persistedSet: SessionSet?
 
-    init(id: UUID = UUID(), weight: Double? = nil, reps: Int? = nil, rpe: Double? = nil, isCompleted: Bool = false) {
+    init(id: UUID = UUID(), weight: Double? = nil, reps: Int? = nil, rpe: Double? = nil, duration: Int? = nil, isCompleted: Bool = false) {
         self.id = id
         self.weightText = weight.map { $0.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int($0))" : String(format: "%.1f", $0) } ?? ""
         self.repsText   = reps.map { "\($0)" } ?? ""
         self.rpeText    = rpe.map { $0.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int($0))" : String(format: "%.1f", $0) } ?? ""
+        self.durationSecsText = duration.map { "\($0)" } ?? ""
         self.isCompleted = isCompleted
     }
 }
@@ -98,7 +100,14 @@ final class LiftActiveSessionViewModel {
                 // Previous best
                 let topSets = try await sessionSetRepo.topSetPerSession(exerciseID: exercise.clientUUID, limit: 1)
                 var previousBest: String?
-                if let top = topSets.first {
+                if exercise.metricType == .time {
+                    // topSetPerSession filters on weight_kg IS NOT NULL, so returns nothing for .time;
+                    // use the session list to derive the best duration instead.
+                    let recentSets = try await sessionSetRepo.historyByExercise(exerciseID: exercise.clientUUID, monthsBack: 12)
+                    if let best = recentSets.compactMap({ $0.durationSecs }).max() {
+                        previousBest = "Previous: \(best)s"
+                    }
+                } else if let top = topSets.first {
                     let wStr = top.weightKg.truncatingRemainder(dividingBy: 1) == 0
                         ? "\(Int(top.weightKg)) KG" : String(format: "%.1f KG", top.weightKg)
                     previousBest = "Previous: \(wStr) × \(top.reps)"
@@ -107,7 +116,11 @@ final class LiftActiveSessionViewModel {
                 // Existing sets for this session + exercise
                 let existingSets = try await sessionSetRepo.list(sessionID: sessionID, exerciseID: exercise.clientUUID)
                 let rows: [SetRowState] = existingSets.map { ss in
-                    SetRowState(id: ss.clientUUID, weight: ss.weightKg, reps: ss.reps, rpe: ss.rpe, isCompleted: ss.completedAt != nil)
+                    if exercise.metricType == .time {
+                        return SetRowState(id: ss.clientUUID, rpe: ss.rpe, duration: ss.durationSecs, isCompleted: ss.completedAt != nil)
+                    } else {
+                        return SetRowState(id: ss.clientUUID, weight: ss.weightKg, reps: ss.reps, rpe: ss.rpe, isCompleted: ss.completedAt != nil)
+                    }
                 }
 
                 builtCards.append(ExerciseCardState(
@@ -134,11 +147,14 @@ final class LiftActiveSessionViewModel {
     func persistSet(_ row: SetRowState, in card: ExerciseCardState, exerciseOrder: Int) {
         Task {
             guard let s = session else { return }
-            let weight = Double(row.weightText)
-            let reps   = Int(row.repsText)
-            let rpe    = Double(row.rpeText)
-            let now    = Date()
+            let now       = Date()
             let setNumber = (card.rows.firstIndex(where: { $0.id == row.id }) ?? 0) + 1
+            let rpe       = Double(row.rpeText)
+            let isTime    = card.exercise.metricType == .time
+
+            let weightKg:     Double? = isTime ? nil : Double(row.weightText)
+            let reps:         Int?    = isTime ? nil : Int(row.repsText)
+            let durationSecs: Int?    = isTime ? Int(row.durationSecsText) : nil
 
             if let existing = row.persistedSet {
                 let updated = SessionSet(
@@ -149,9 +165,9 @@ final class LiftActiveSessionViewModel {
                     exerciseOrder: exerciseOrder,
                     setNumber: setNumber,
                     setType: existing.setType,
-                    weightKg: weight,
+                    weightKg: weightKg,
                     reps: reps,
-                    durationSecs: nil,
+                    durationSecs: durationSecs,
                     distanceM: nil,
                     rpe: rpe,
                     completedAt: row.isCompleted ? now : existing.completedAt,
@@ -168,9 +184,9 @@ final class LiftActiveSessionViewModel {
                     exerciseOrder: exerciseOrder,
                     setNumber: setNumber,
                     setType: .working,
-                    weightKg: weight,
+                    weightKg: weightKg,
                     reps: reps,
-                    durationSecs: nil,
+                    durationSecs: durationSecs,
                     distanceM: nil,
                     rpe: rpe,
                     completedAt: row.isCompleted ? now : nil,

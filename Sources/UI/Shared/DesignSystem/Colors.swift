@@ -34,6 +34,11 @@ public enum AppColor: Sendable {
     /// Faded warm-orange used for muted badge backgrounds and tint fills (~#E8C4A0).
     public static let accentMuted = Color(hex: 0xE8C4A0)
 
+    // MARK: Removed / De-emphasised
+
+    /// Removed-from-routine rows in LastExecutionCard (V2).
+    public static let textMutedRemoved = Color(hex: 0x9A9A9A)
+
     // MARK: Structure
 
     /// Hairline separator color (~#D4CDBE).

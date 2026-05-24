@@ -196,6 +196,19 @@ struct ExerciseRepository {
                 let muscleID = try resolveMuscleID(db, uuid: muscleUUID)
                 try insertExerciseMuscle(db, exerciseRowID: rowID, muscleID: muscleID, role: role)
             }
+            SnapshotHook.notifyChange()
+        }
+    }
+
+    // MARK: - Metric-type locked check
+
+    func metricTypeLocked(exerciseID: Int) async throws -> Bool {
+        try await dbManager.read { db in
+            let stmt = try prepare(db, "SELECT EXISTS(SELECT 1 FROM session_set WHERE exercise_id = ? LIMIT 1);")
+            defer { finalize(stmt) }
+            bindInt(stmt, 1, exerciseID)
+            _ = try step(stmt)
+            return columnBool(stmt, 0)
         }
     }
 
@@ -203,6 +216,22 @@ struct ExerciseRepository {
 
     func update(_ exercise: Exercise, muscles: [(UUID, MuscleRole)]) async throws {
         try await dbManager.transaction { db in
+            // Metric-type immutability guard: reject if metric_type changes and sets exist.
+            let currentStmt = try prepare(db, "SELECT metric_type FROM exercise WHERE id = ?;")
+            defer { finalize(currentStmt) }
+            bindInt(currentStmt, 1, exercise.id)
+            if try step(currentStmt),
+               let currentRaw = columnText(currentStmt, 0),
+               currentRaw != exercise.metricType.rawValue {
+                let existsStmt = try prepare(db, "SELECT EXISTS(SELECT 1 FROM session_set WHERE exercise_id = ? LIMIT 1);")
+                defer { finalize(existsStmt) }
+                bindInt(existsStmt, 1, exercise.id)
+                _ = try step(existsStmt)
+                if columnBool(existsStmt, 0) {
+                    throw DatabaseError.conflict("metric_type cannot be changed after sets have been logged for this exercise")
+                }
+            }
+
             let sql = """
                 UPDATE exercise
                 SET name = ?, abbreviation = ?, equipment_id = ?, metric_type = ?,
@@ -232,6 +261,7 @@ struct ExerciseRepository {
                 let muscleID = try resolveMuscleID(db, uuid: muscleUUID)
                 try insertExerciseMuscle(db, exerciseRowID: rowID, muscleID: muscleID, role: role)
             }
+            if exercise.isCustom { SnapshotHook.notifyChange() }
         }
     }
 
