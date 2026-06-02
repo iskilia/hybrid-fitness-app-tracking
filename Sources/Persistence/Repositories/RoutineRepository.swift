@@ -251,6 +251,181 @@ struct RoutineRepository {
         }
     }
 
+    // MARK: - Per-set plan rows (V3)
+
+    func listSets(routineExerciseID: Int) async throws -> [RoutineExerciseSet] {
+        try await dbManager.read { db in
+            let stmt = try prepare(db, """
+                SELECT id, client_uuid, routine_exercise_id, set_number, set_type,
+                       target_weight_kg, target_reps_min, target_reps_max,
+                       target_duration_secs_min, target_duration_secs_max,
+                       notes, updated_at
+                FROM routine_exercise_set
+                WHERE routine_exercise_id = ?
+                ORDER BY set_number ASC;
+                """)
+            defer { finalize(stmt) }
+            bindInt(stmt, 1, routineExerciseID)
+            var result: [RoutineExerciseSet] = []
+            while try step(stmt) {
+                if let row = try setFromStmt(stmt) { result.append(row) }
+            }
+            return result
+        }
+    }
+
+    /// Batch fetch sets for many routine_exercise rows in a single query.
+    /// Returns a dict keyed by routine_exercise.id.
+    func listSets(routineExerciseIDs: [Int]) async throws -> [Int: [RoutineExerciseSet]] {
+        guard !routineExerciseIDs.isEmpty else { return [:] }
+        return try await dbManager.read { db in
+            let placeholders = Array(repeating: "?", count: routineExerciseIDs.count).joined(separator: ",")
+            let sql = """
+                SELECT id, client_uuid, routine_exercise_id, set_number, set_type,
+                       target_weight_kg, target_reps_min, target_reps_max,
+                       target_duration_secs_min, target_duration_secs_max,
+                       notes, updated_at
+                FROM routine_exercise_set
+                WHERE routine_exercise_id IN (\(placeholders))
+                ORDER BY routine_exercise_id ASC, set_number ASC;
+                """
+            let stmt = try prepare(db, sql)
+            defer { finalize(stmt) }
+            for (i, id) in routineExerciseIDs.enumerated() {
+                bindInt(stmt, Int32(i + 1), id)
+            }
+            var result: [Int: [RoutineExerciseSet]] = [:]
+            while try step(stmt) {
+                guard let row = try setFromStmt(stmt) else { continue }
+                result[row.routineExerciseID, default: []].append(row)
+            }
+            return result
+        }
+    }
+
+    /// Atomic replace: delete all existing sets for the routine_exercise and
+    /// insert the provided rows in order. set_number is renumbered 1..N.
+    func replaceSets(routineExerciseID: Int, sets: [RoutineExerciseSet]) async throws {
+        try await dbManager.transaction { db in
+            let del = try prepare(db, "DELETE FROM routine_exercise_set WHERE routine_exercise_id = ?;")
+            bindInt(del, 1, routineExerciseID)
+            _ = try step(del)
+            finalize(del)
+
+            let now = Date()
+            for (i, s) in sets.enumerated() {
+                try insertSet(db, RoutineExerciseSet(
+                    id: 0,
+                    clientUUID: s.clientUUID,
+                    routineExerciseID: routineExerciseID,
+                    setNumber: i + 1,
+                    setType: s.setType,
+                    targetWeightKg: s.targetWeightKg,
+                    targetRepsMin: s.targetRepsMin,
+                    targetRepsMax: s.targetRepsMax,
+                    targetDurationSecsMin: s.targetDurationSecsMin,
+                    targetDurationSecsMax: s.targetDurationSecsMax,
+                    notes: s.notes,
+                    updatedAt: now
+                ))
+            }
+        }
+        SnapshotHook.notifyChange()
+    }
+
+    func appendSet(_ s: RoutineExerciseSet) async throws {
+        try await dbManager.transaction { db in
+            try insertSet(db, s)
+        }
+        SnapshotHook.notifyChange()
+    }
+
+    func updateSet(_ s: RoutineExerciseSet) async throws {
+        try await dbManager.transaction { db in
+            let sql = """
+                UPDATE routine_exercise_set
+                SET set_number = ?, set_type = ?, target_weight_kg = ?,
+                    target_reps_min = ?, target_reps_max = ?,
+                    target_duration_secs_min = ?, target_duration_secs_max = ?,
+                    notes = ?, updated_at = ?
+                WHERE client_uuid = ?;
+                """
+            let stmt = try prepare(db, sql)
+            defer { finalize(stmt) }
+            bindInt(stmt, 1, s.setNumber)
+            bindText(stmt, 2, s.setType.rawValue)
+            bindDouble(stmt, 3, s.targetWeightKg)
+            bindInt(stmt, 4, s.targetRepsMin)
+            bindInt(stmt, 5, s.targetRepsMax)
+            bindInt(stmt, 6, s.targetDurationSecsMin)
+            bindInt(stmt, 7, s.targetDurationSecsMax)
+            bindText(stmt, 8, s.notes)
+            bindDate(stmt, 9, Date())
+            bindUUID(stmt, 10, s.clientUUID)
+            _ = try step(stmt)
+        }
+        SnapshotHook.notifyChange()
+    }
+
+    func removeSet(id: UUID) async throws {
+        try await dbManager.transaction { db in
+            let stmt = try prepare(db, "DELETE FROM routine_exercise_set WHERE client_uuid = ?;")
+            defer { finalize(stmt) }
+            bindUUID(stmt, 1, id)
+            _ = try step(stmt)
+        }
+        SnapshotHook.notifyChange()
+    }
+
+    private func insertSet(_ db: OpaquePointer, _ s: RoutineExerciseSet) throws {
+        let sql = """
+            INSERT INTO routine_exercise_set
+                (client_uuid, routine_exercise_id, set_number, set_type,
+                 target_weight_kg, target_reps_min, target_reps_max,
+                 target_duration_secs_min, target_duration_secs_max,
+                 notes, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """
+        let stmt = try prepare(db, sql)
+        defer { finalize(stmt) }
+        bindUUID(stmt, 1, s.clientUUID)
+        bindInt(stmt, 2, s.routineExerciseID)
+        bindInt(stmt, 3, s.setNumber)
+        bindText(stmt, 4, s.setType.rawValue)
+        bindDouble(stmt, 5, s.targetWeightKg)
+        bindInt(stmt, 6, s.targetRepsMin)
+        bindInt(stmt, 7, s.targetRepsMax)
+        bindInt(stmt, 8, s.targetDurationSecsMin)
+        bindInt(stmt, 9, s.targetDurationSecsMax)
+        bindText(stmt, 10, s.notes)
+        bindDate(stmt, 11, s.updatedAt)
+        _ = try step(stmt)
+    }
+
+    private func setFromStmt(_ stmt: OpaquePointer) throws -> RoutineExerciseSet? {
+        guard
+            let uuidStr = columnText(stmt, 1),
+            let uuid = UUID(uuidString: uuidStr),
+            let typeStr = columnText(stmt, 4),
+            let setType = RoutineExerciseSetType(rawValue: typeStr),
+            let updatedAt = columnDate(stmt, 11)
+        else { return nil }
+        return RoutineExerciseSet(
+            id: Int(sqlite3_column_int64(stmt, 0)),
+            clientUUID: uuid,
+            routineExerciseID: columnInt(stmt, 2) ?? 0,
+            setNumber: columnInt(stmt, 3) ?? 0,
+            setType: setType,
+            targetWeightKg: columnDouble(stmt, 5),
+            targetRepsMin: columnInt(stmt, 6),
+            targetRepsMax: columnInt(stmt, 7),
+            targetDurationSecsMin: columnInt(stmt, 8),
+            targetDurationSecsMax: columnInt(stmt, 9),
+            notes: columnText(stmt, 10),
+            updatedAt: updatedAt
+        )
+    }
+
     // MARK: - Summary (exercise + run counts for a routine)
 
     func summary(routineID: UUID) async throws -> (exerciseCount: Int, runCount: Int) {

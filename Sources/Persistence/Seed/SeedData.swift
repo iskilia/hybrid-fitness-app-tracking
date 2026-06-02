@@ -4,21 +4,37 @@ import Foundation
 // MARK: - Public entry point
 
 public func seedIfEmpty(_ db: OpaquePointer) throws {
-    guard try tableIsEmpty(db, table: "equipment"),
-          try tableIsEmpty(db, table: "muscle"),
-          try tableIsEmpty(db, table: "tag"),
-          try tableIsEmpty(db, table: "exercise"),
-          try tableIsEmpty(db, table: "run_template") else {
-        return
+    let needsCatalog =
+        try tableIsEmpty(db, table: "equipment")
+        && (try tableIsEmpty(db, table: "muscle"))
+        && (try tableIsEmpty(db, table: "tag"))
+        && (try tableIsEmpty(db, table: "exercise"))
+        && (try tableIsEmpty(db, table: "run_template"))
+
+    // Routines depend on the V3 routine_exercise_set table. If V3 hasn't run
+    // yet (e.g. an in-flight migration test), skip routine seeding.
+    let routineTableReady = try tableExists(db, table: "routine_exercise_set")
+    let needsRoutines: Bool
+    if routineTableReady {
+        needsRoutines = try tableIsEmpty(db, table: "routine")
+    } else {
+        needsRoutines = false
     }
+
+    guard needsCatalog || needsRoutines else { return }
 
     try exec(db: db, sql: "BEGIN;")
     do {
-        try insertEquipment(db)
-        try insertMuscles(db)
-        try insertTags(db)
-        try insertExercises(db)
-        try insertRunTemplates(db)
+        if needsCatalog {
+            try insertEquipment(db)
+            try insertMuscles(db)
+            try insertTags(db)
+            try insertExercises(db)
+            try insertRunTemplates(db)
+        }
+        if needsRoutines {
+            try insertSeedRoutines(db)
+        }
         try exec(db: db, sql: "COMMIT;")
     } catch {
         try? exec(db: db, sql: "ROLLBACK;")
@@ -395,7 +411,189 @@ private func insertFartlekBlocks(_ db: OpaquePointer, templateID: Int) throws {
     }
 }
 
+// MARK: - Routines (V3)
+//
+// Three seeded sample routines so the home + routine list screens are
+// populated on first launch. IDs are chosen to avoid colliding with
+// user-created routines (these are inserted before any user action).
+
+private struct PlannedSet {
+    let setType: String                  // 'WARMUP' | 'WORKING' | 'BACKOFF'
+    let weightKg: Double?
+    let repsMin: Int?
+    let repsMax: Int?
+    let durationSecsMin: Int?
+    let durationSecsMax: Int?
+}
+
+private struct RoutineExerciseSeed {
+    let id: Int                          // routine_exercise.id
+    let exerciseID: Int                  // FK exercise.id
+    let sortOrder: Int
+    let notes: String?
+    let plannedSets: [PlannedSet]
+}
+
+private struct RoutineRunSeed {
+    let id: Int                          // routine_run.id
+    let runTemplateID: Int               // FK run_template.id
+    let sortOrder: Int
+}
+
+private struct RoutineSeed {
+    let id: Int
+    let name: String
+    let type: String                     // 'LIFT' | 'RUN' | 'MIXED'
+    let sortOrder: Int
+    let exercises: [RoutineExerciseSeed]
+    let runs: [RoutineRunSeed]
+}
+
+private func insertSeedRoutines(_ db: OpaquePointer) throws {
+    let now = Int(Date().timeIntervalSince1970)
+
+    let pushDay = RoutineSeed(
+        id: 1, name: "Push Day", type: "LIFT", sortOrder: 1,
+        exercises: [
+            RoutineExerciseSeed(id: 1, exerciseID: 1, sortOrder: 1, notes: nil, plannedSets: [
+                PlannedSet(setType: "WARMUP",  weightKg: 40,   repsMin: 6, repsMax: 8, durationSecsMin: nil, durationSecsMax: nil),
+                PlannedSet(setType: "WORKING", weightKg: 65,   repsMin: 6, repsMax: 8, durationSecsMin: nil, durationSecsMax: nil),
+                PlannedSet(setType: "WORKING", weightKg: 70,   repsMin: 5, repsMax: 7, durationSecsMin: nil, durationSecsMax: nil),
+                PlannedSet(setType: "WORKING", weightKg: 72.5, repsMin: 4, repsMax: 6, durationSecsMin: nil, durationSecsMax: nil),
+            ]),
+            RoutineExerciseSeed(id: 2, exerciseID: 4, sortOrder: 2, notes: nil, plannedSets: [
+                PlannedSet(setType: "WORKING", weightKg: 40, repsMin: 6, repsMax: 8, durationSecsMin: nil, durationSecsMax: nil),
+                PlannedSet(setType: "WORKING", weightKg: 45, repsMin: 5, repsMax: 7, durationSecsMin: nil, durationSecsMax: nil),
+                PlannedSet(setType: "WORKING", weightKg: 50, repsMin: 4, repsMax: 6, durationSecsMin: nil, durationSecsMax: nil),
+            ]),
+            RoutineExerciseSeed(id: 3, exerciseID: 8, sortOrder: 3, notes: nil, plannedSets: [
+                PlannedSet(setType: "WORKING", weightKg: 24, repsMin: 8, repsMax: 12, durationSecsMin: nil, durationSecsMax: nil),
+                PlannedSet(setType: "WORKING", weightKg: 26, repsMin: 8, repsMax: 10, durationSecsMin: nil, durationSecsMax: nil),
+                PlannedSet(setType: "WORKING", weightKg: 28, repsMin: 6, repsMax: 10, durationSecsMin: nil, durationSecsMax: nil),
+            ]),
+        ],
+        runs: []
+    )
+
+    let coreHolds = RoutineSeed(
+        id: 2, name: "Core & Holds", type: "LIFT", sortOrder: 2,
+        exercises: [
+            RoutineExerciseSeed(id: 4, exerciseID: 29, sortOrder: 1, notes: nil, plannedSets: [
+                PlannedSet(setType: "WORKING", weightKg: nil, repsMin: nil, repsMax: nil, durationSecsMin: 45, durationSecsMax: 60),
+                PlannedSet(setType: "WORKING", weightKg: nil, repsMin: nil, repsMax: nil, durationSecsMin: 45, durationSecsMax: 60),
+                PlannedSet(setType: "WORKING", weightKg: nil, repsMin: nil, repsMax: nil, durationSecsMin: 45, durationSecsMax: 60),
+            ]),
+            RoutineExerciseSeed(id: 5, exerciseID: 32, sortOrder: 2, notes: nil, plannedSets: [
+                PlannedSet(setType: "WORKING", weightKg: nil, repsMin: nil, repsMax: nil, durationSecsMin: 30, durationSecsMax: 45),
+                PlannedSet(setType: "WORKING", weightKg: nil, repsMin: nil, repsMax: nil, durationSecsMin: 30, durationSecsMax: 45),
+                PlannedSet(setType: "WORKING", weightKg: nil, repsMin: nil, repsMax: nil, durationSecsMin: 30, durationSecsMax: 45),
+            ]),
+            RoutineExerciseSeed(id: 6, exerciseID: 33, sortOrder: 3, notes: nil, plannedSets: [
+                PlannedSet(setType: "WORKING", weightKg: nil, repsMin: nil, repsMax: nil, durationSecsMin: 30, durationSecsMax: 45),
+                PlannedSet(setType: "WORKING", weightKg: nil, repsMin: nil, repsMax: nil, durationSecsMin: 30, durationSecsMax: 45),
+                PlannedSet(setType: "WORKING", weightKg: nil, repsMin: nil, repsMax: nil, durationSecsMin: 30, durationSecsMax: 45),
+            ]),
+            RoutineExerciseSeed(id: 7, exerciseID: 31, sortOrder: 4, notes: nil, plannedSets: [
+                PlannedSet(setType: "WORKING", weightKg: nil, repsMin: nil, repsMax: nil, durationSecsMin: 45, durationSecsMax: 60),
+                PlannedSet(setType: "WORKING", weightKg: nil, repsMin: nil, repsMax: nil, durationSecsMin: 45, durationSecsMax: 60),
+                PlannedSet(setType: "WORKING", weightKg: nil, repsMin: nil, repsMax: nil, durationSecsMin: 45, durationSecsMax: 60),
+            ]),
+        ],
+        runs: []
+    )
+
+    let tempoTuesday = RoutineSeed(
+        id: 3, name: "Tempo Tuesday", type: "RUN", sortOrder: 3,
+        exercises: [],
+        runs: [
+            RoutineRunSeed(id: 1, runTemplateID: 2, sortOrder: 1),
+        ]
+    )
+
+    for routine in [pushDay, coreHolds, tempoTuesday] {
+        try insertRoutine(db, routine, now: now)
+    }
+}
+
+private func insertRoutine(_ db: OpaquePointer, _ r: RoutineSeed, now: Int) throws {
+    let routineUUID = UUID().uuidString.lowercased()
+    let routineSQL = """
+        INSERT INTO routine
+            (id, client_uuid, name, type, sort_order, created_at, updated_at, deleted_at)
+        VALUES
+            (\(r.id), '\(routineUUID)', '\(r.name)', '\(r.type)', \(r.sortOrder), \(now), \(now), NULL);
+        """
+    try exec(db: db, sql: routineSQL)
+
+    for re in r.exercises {
+        let reUUID = UUID().uuidString.lowercased()
+        let targetSets = re.plannedSets.count
+        // Derive single-range V2 columns from planned set list so legacy
+        // consumers (V1/V2 readers) still see usable data. Use the working-set
+        // ranges if available; fall back to nil.
+        let workingSet = re.plannedSets.first(where: { $0.setType == "WORKING" }) ?? re.plannedSets[0]
+        let reSQL = """
+            INSERT INTO routine_exercise
+                (id, client_uuid, routine_id, exercise_id, sort_order,
+                 target_sets, target_rep_min, target_rep_max, target_rpe,
+                 target_duration_secs_min, target_duration_secs_max,
+                 notes, updated_at)
+            VALUES
+                (\(re.id), '\(reUUID)', \(r.id), \(re.exerciseID), \(re.sortOrder),
+                 \(targetSets), \(intOrNull(workingSet.repsMin)), \(intOrNull(workingSet.repsMax)), NULL,
+                 \(intOrNull(workingSet.durationSecsMin)), \(intOrNull(workingSet.durationSecsMax)),
+                 \(textOrNull(re.notes)), \(now));
+            """
+        try exec(db: db, sql: reSQL)
+
+        for (i, p) in re.plannedSets.enumerated() {
+            let setUUID = UUID().uuidString.lowercased()
+            let setSQL = """
+                INSERT INTO routine_exercise_set
+                    (client_uuid, routine_exercise_id, set_number, set_type,
+                     target_weight_kg, target_reps_min, target_reps_max,
+                     target_duration_secs_min, target_duration_secs_max,
+                     notes, updated_at)
+                VALUES
+                    ('\(setUUID)', \(re.id), \(i + 1), '\(p.setType)',
+                     \(doubleOrNull(p.weightKg)),
+                     \(intOrNull(p.repsMin)), \(intOrNull(p.repsMax)),
+                     \(intOrNull(p.durationSecsMin)), \(intOrNull(p.durationSecsMax)),
+                     NULL, \(now));
+                """
+            try exec(db: db, sql: setSQL)
+        }
+    }
+
+    for run in r.runs {
+        let runUUID = UUID().uuidString.lowercased()
+        let runSQL = """
+            INSERT INTO routine_run
+                (id, client_uuid, routine_id, run_template_id, sort_order, notes, updated_at)
+            VALUES
+                (\(run.id), '\(runUUID)', \(r.id), \(run.runTemplateID), \(run.sortOrder), NULL, \(now));
+            """
+        try exec(db: db, sql: runSQL)
+    }
+}
+
+private func intOrNull(_ v: Int?) -> String { v.map { String($0) } ?? "NULL" }
+private func doubleOrNull(_ v: Double?) -> String { v.map { String($0) } ?? "NULL" }
+private func textOrNull(_ v: String?) -> String { v.map { "'\($0.replacingOccurrences(of: "'", with: "''"))'" } ?? "NULL" }
+
 // MARK: - Helpers
+
+private func tableExists(_ db: OpaquePointer, table: String) throws -> Bool {
+    var stmt: OpaquePointer? = nil
+    let sql = "SELECT name FROM sqlite_master WHERE type='table' AND name = ?;"
+    guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+        let msg = String(cString: sqlite3_errmsg(db))
+        throw SchemaError.execFailed(statement: sql, message: msg)
+    }
+    defer { sqlite3_finalize(stmt) }
+    sqlite3_bind_text(stmt, 1, (table as NSString).utf8String, -1, nil)
+    return sqlite3_step(stmt) == SQLITE_ROW
+}
 
 private func tableIsEmpty(_ db: OpaquePointer, table: String) throws -> Bool {
     var stmt: OpaquePointer? = nil

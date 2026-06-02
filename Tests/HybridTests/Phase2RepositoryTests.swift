@@ -506,6 +506,13 @@ final class Phase2RepositoryTests: XCTestCase {
     // MARK: - 12. Routine cap (10 max)
 
     func testRoutineCapEnforcement() async throws {
+        // V3 seed inserts 3 sample routines; clear them so the cap test starts
+        // from zero against the 10-routine ceiling.
+        let existing = try await routines.list()
+        for r in existing {
+            try await routines.softDelete(id: r.clientUUID)
+        }
+
         let now = Date()
         for i in 0..<10 {
             let r = Routine(
@@ -1328,5 +1335,218 @@ final class Phase2RepositoryTests: XCTestCase {
                         "Back Squat (logged last session, dropped from routine) should still appear in the summary as a muted row")
         XCTAssertEqual(backSquatLine?.removed, true,
                        "Back Squat should be marked removed=true after being dropped from the routine")
+    }
+
+    // MARK: - Phase V3 — W1: routine_exercise_set repository round-trip
+
+    /// listSets must return rows ordered by set_number ASC regardless of insert order.
+    func testListSetsReturnsRowsInSetNumberOrder() async throws {
+        let (_, routineExerciseRowID) = try await makeRoutineWithExercise(targetSets: 0)
+
+        let now = Date()
+        // Insert with setNumber 3, 1, 2 to exercise the ORDER BY.
+        for n in [3, 1, 2] {
+            try await routines.appendSet(RoutineExerciseSet(
+                id: 0,
+                clientUUID: UUID(),
+                routineExerciseID: routineExerciseRowID,
+                setNumber: n,
+                setType: .working,
+                targetWeightKg: nil,
+                targetRepsMin: 5,
+                targetRepsMax: 8,
+                targetDurationSecsMin: nil,
+                targetDurationSecsMax: nil,
+                notes: nil,
+                updatedAt: now
+            ))
+        }
+
+        let listed = try await routines.listSets(routineExerciseID: routineExerciseRowID)
+        XCTAssertEqual(listed.map { $0.setNumber }, [1, 2, 3],
+                       "listSets should return rows ordered by set_number ASC")
+    }
+
+    /// replaceSets must atomically delete the prior set rows and insert the new
+    /// ones — none of the prior client_uuids should remain.
+    func testReplaceSetsIsAtomic() async throws {
+        let (_, routineExerciseRowID) = try await makeRoutineWithExercise(targetSets: 0)
+
+        let now = Date()
+        let priorUUIDs = [UUID(), UUID()]
+        for (i, uuid) in priorUUIDs.enumerated() {
+            try await routines.appendSet(RoutineExerciseSet(
+                id: 0,
+                clientUUID: uuid,
+                routineExerciseID: routineExerciseRowID,
+                setNumber: i + 1,
+                setType: .working,
+                targetWeightKg: nil,
+                targetRepsMin: 5,
+                targetRepsMax: 5,
+                targetDurationSecsMin: nil,
+                targetDurationSecsMax: nil,
+                notes: nil,
+                updatedAt: now
+            ))
+        }
+
+        let newUUIDs = [UUID(), UUID(), UUID()]
+        let replacement = newUUIDs.enumerated().map { i, uuid in
+            RoutineExerciseSet(
+                id: 0,
+                clientUUID: uuid,
+                routineExerciseID: routineExerciseRowID,
+                setNumber: i + 1,
+                setType: .working,
+                targetWeightKg: 80.0 + Double(i),
+                targetRepsMin: 6,
+                targetRepsMax: 8,
+                targetDurationSecsMin: nil,
+                targetDurationSecsMax: nil,
+                notes: nil,
+                updatedAt: now
+            )
+        }
+        try await routines.replaceSets(routineExerciseID: routineExerciseRowID, sets: replacement)
+
+        let after = try await routines.listSets(routineExerciseID: routineExerciseRowID)
+        XCTAssertEqual(after.count, 3, "replaceSets should leave exactly the new set count")
+        XCTAssertEqual(after.map { $0.setNumber }, [1, 2, 3],
+                       "replaceSets should renumber set_number 1..N in call order")
+
+        let afterUUIDs = Set(after.map { $0.clientUUID })
+        XCTAssertEqual(afterUUIDs, Set(newUUIDs),
+                       "Only the replacement set client_uuids should remain")
+        for prior in priorUUIDs {
+            XCTAssertFalse(afterUUIDs.contains(prior),
+                           "Prior set client_uuid \(prior) should not survive replaceSets")
+        }
+    }
+
+    /// replaceSets must renumber set_number to 1..N based on call order, ignoring
+    /// the setNumber values passed in.
+    func testReplaceSetsRenumbersSetNumber() async throws {
+        let (_, routineExerciseRowID) = try await makeRoutineWithExercise(targetSets: 0)
+
+        let now = Date()
+        let scrambled: [Int] = [99, 7, 42]
+        let inputs = scrambled.map { sn in
+            RoutineExerciseSet(
+                id: 0,
+                clientUUID: UUID(),
+                routineExerciseID: routineExerciseRowID,
+                setNumber: sn,
+                setType: .working,
+                targetWeightKg: nil,
+                targetRepsMin: 5,
+                targetRepsMax: 5,
+                targetDurationSecsMin: nil,
+                targetDurationSecsMax: nil,
+                notes: nil,
+                updatedAt: now
+            )
+        }
+        try await routines.replaceSets(routineExerciseID: routineExerciseRowID, sets: inputs)
+
+        let after = try await routines.listSets(routineExerciseID: routineExerciseRowID)
+        XCTAssertEqual(after.map { $0.setNumber }, [1, 2, 3],
+                       "replaceSets must renumber 99/7/42 → 1/2/3 in call order")
+    }
+
+    /// removeSet(by:client_uuid) must drop the middle row, leaving 1st and 3rd.
+    func testRemoveSetByUUID() async throws {
+        let (_, routineExerciseRowID) = try await makeRoutineWithExercise(targetSets: 0)
+
+        let now = Date()
+        var uuids: [UUID] = []
+        for n in 1...3 {
+            let u = UUID()
+            uuids.append(u)
+            try await routines.appendSet(RoutineExerciseSet(
+                id: 0,
+                clientUUID: u,
+                routineExerciseID: routineExerciseRowID,
+                setNumber: n,
+                setType: .working,
+                targetWeightKg: nil,
+                targetRepsMin: 5,
+                targetRepsMax: 5,
+                targetDurationSecsMin: nil,
+                targetDurationSecsMax: nil,
+                notes: nil,
+                updatedAt: now
+            ))
+        }
+
+        try await routines.removeSet(id: uuids[1])
+        let after = try await routines.listSets(routineExerciseID: routineExerciseRowID)
+        XCTAssertEqual(after.count, 2, "removeSet should leave 2 rows")
+        XCTAssertEqual(after.map { $0.clientUUID }, [uuids[0], uuids[2]],
+                       "removeSet should drop only the targeted client_uuid")
+    }
+
+    /// Hard-deleting the parent routine_exercise must CASCADE into routine_exercise_set.
+    func testCascadeDeleteFromRoutineExerciseDropsSets() async throws {
+        let (_, routineExerciseRowID) = try await makeRoutineWithExercise(targetSets: 0)
+
+        let now = Date()
+        for n in 1...3 {
+            try await routines.appendSet(RoutineExerciseSet(
+                id: 0,
+                clientUUID: UUID(),
+                routineExerciseID: routineExerciseRowID,
+                setNumber: n,
+                setType: .working,
+                targetWeightKg: nil,
+                targetRepsMin: 5,
+                targetRepsMax: 5,
+                targetDurationSecsMin: nil,
+                targetDurationSecsMax: nil,
+                notes: nil,
+                updatedAt: now
+            ))
+        }
+
+        let preCount = try await rawScalarInt(
+            "SELECT COUNT(*) FROM routine_exercise_set WHERE routine_exercise_id = \(routineExerciseRowID);")
+        XCTAssertEqual(preCount, 3)
+
+        // Hard-DELETE the parent row via raw SQL to exercise the FK CASCADE.
+        try await rawExec("DELETE FROM routine_exercise WHERE id = \(routineExerciseRowID);")
+
+        let afterRepo = try await routines.listSets(routineExerciseID: routineExerciseRowID)
+        XCTAssertEqual(afterRepo.count, 0,
+                       "routine_exercise_set rows should CASCADE on routine_exercise delete")
+    }
+
+    /// Shared helper: build a routine + a single routine_exercise (Bench Press)
+    /// and return the routine_exercise integer row ID. `targetSets` may be set
+    /// to 0 so the V3 backfill (which only runs at migrate time) is irrelevant.
+    private func makeRoutineWithExercise(targetSets: Int) async throws -> (UUID, Int) {
+        let now = Date()
+        let routineUUID = UUID()
+        let routine = Routine(
+            id: 0, clientUUID: routineUUID,
+            name: "V3 Set R \(routineUUID.uuidString.prefix(8))", type: .lift,
+            sortOrder: 0, createdAt: now, updatedAt: now, deletedAt: nil
+        )
+        try await routines.create(routine, exerciseEntries: [], runEntries: [])
+        let routineRowID = (try await routines.get(id: routineUUID))!.id
+
+        let benchRowID = try await resolveExerciseRowID(uuid: benchPressUUID)
+        let entryUUID = UUID()
+        let entry = RoutineExercise(
+            id: 0, clientUUID: entryUUID,
+            routineID: routineRowID, exerciseID: benchRowID, sortOrder: 0,
+            targetSets: targetSets, targetRepMin: 5, targetRepMax: 8,
+            targetRPE: nil, targetDurationSecsMin: nil, targetDurationSecsMax: nil,
+            notes: nil, updatedAt: now
+        )
+        try await routines.update(routine, exerciseEntries: [entry], runEntries: [])
+
+        let routineExerciseRowID = try await rawScalarInt(
+            "SELECT id FROM routine_exercise WHERE client_uuid = '\(entryUUID.uuidString.lowercased())';")
+        return (routineUUID, routineExerciseRowID)
     }
 }

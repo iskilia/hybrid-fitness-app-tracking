@@ -37,7 +37,7 @@ final class Phase1GateTests: XCTestCase {
         XCTAssertNoThrow(try migrate(db), "migrate(db) threw on fresh in-memory DB")
 
         let version = try scalarInt(db, "SELECT version FROM schema_meta WHERE id = 1;")
-        XCTAssertEqual(version, 2, "schema_meta.version should equal the latest registered migration version")
+        XCTAssertEqual(version, 3, "schema_meta.version should equal the latest registered migration version")
     }
 
     /// Seed the empty DB → seedIfEmpty must not throw.
@@ -276,6 +276,246 @@ final class Phase1GateTests: XCTestCase {
             XCTAssertTrue(names.contains(expected),
                           "Expected timed-hold '\(expected)' not found in seed; got names: \(names)")
         }
+    }
+
+    // MARK: - V3 gate tests
+
+    /// V3 must create the routine_exercise_set table with the documented
+    /// 12 columns, the CHECK on set_type, the UNIQUE(routine_exercise_id, set_number)
+    /// constraint, and the (routine_exercise_id, set_number) index.
+    func testV3MigrationCreatesRoutineExerciseSetTable() throws {
+        let db = try unwrapDB()
+        try migrate(db)
+
+        // 1. Table exists in sqlite_master.
+        let tableName = try scalarText(db,
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='routine_exercise_set';")
+        XCTAssertEqual(tableName, "routine_exercise_set",
+                       "V3 migration should have created table routine_exercise_set")
+
+        // 2. PRAGMA table_info → expect exactly the 12 columns documented.
+        let expectedColumns: Set<String> = [
+            "id",
+            "client_uuid",
+            "routine_exercise_id",
+            "set_number",
+            "set_type",
+            "target_weight_kg",
+            "target_reps_min",
+            "target_reps_max",
+            "target_duration_secs_min",
+            "target_duration_secs_max",
+            "notes",
+            "updated_at",
+        ]
+
+        var stmt: OpaquePointer?
+        XCTAssertEqual(sqlite3_prepare_v2(db, "PRAGMA table_info(routine_exercise_set);", -1, &stmt, nil),
+                       SQLITE_OK, "PRAGMA table_info(routine_exercise_set) failed to prepare")
+        var actualColumns: Set<String> = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            actualColumns.insert(columnText(stmt!, 1))
+        }
+        sqlite3_finalize(stmt)
+        XCTAssertEqual(actualColumns, expectedColumns,
+                       "routine_exercise_set column set mismatch; got \(actualColumns)")
+
+        // 3. CHECK on set_type — direct INSERT with set_type='BAD' must fail.
+        let now = Int(Date().timeIntervalSince1970)
+        // Need a routine_exercise row first. Seed a routine + routine_exercise via raw SQL.
+        let routineSQL = """
+            INSERT INTO routine (client_uuid, name, type, sort_order, created_at, updated_at)
+            VALUES ('aaaaaaaa-0000-0000-0000-000000000001', 'V3 CHECK Test', 'LIFT', 0, \(now), \(now));
+            """
+        XCTAssertNoThrow(try exec(db: db, sql: routineSQL))
+        let routineID = Int(sqlite3_last_insert_rowid(db))
+
+        // Seed an exercise via seed (so a valid FK target exists).
+        try seedIfEmpty(db)
+        let exerciseID = try scalarInt(db,
+            "SELECT id FROM exercise WHERE is_custom = 0 LIMIT 1;")
+        XCTAssertNotNil(exerciseID)
+
+        let reSQL = """
+            INSERT INTO routine_exercise
+                (client_uuid, routine_id, exercise_id, sort_order, target_sets, updated_at)
+            VALUES ('aaaaaaaa-0000-0000-0000-000000000002', \(routineID), \(exerciseID!), 0, 3, \(now));
+            """
+        XCTAssertNoThrow(try exec(db: db, sql: reSQL))
+        let reID = Int(sqlite3_last_insert_rowid(db))
+
+        let badInsert = """
+            INSERT INTO routine_exercise_set
+                (client_uuid, routine_exercise_id, set_number, set_type, updated_at)
+            VALUES ('aaaaaaaa-0000-0000-0000-000000000003', \(reID), 1, 'BAD', \(now));
+            """
+        XCTAssertThrowsError(try exec(db: db, sql: badInsert),
+                             "CHECK(set_type IN ('WARMUP','WORKING','BACKOFF')) should reject 'BAD'")
+
+        // 4. UNIQUE(routine_exercise_id, set_number) — second row with same pair errors.
+        let firstOK = """
+            INSERT INTO routine_exercise_set
+                (client_uuid, routine_exercise_id, set_number, set_type, updated_at)
+            VALUES ('aaaaaaaa-0000-0000-0000-000000000004', \(reID), 1, 'WORKING', \(now));
+            """
+        XCTAssertNoThrow(try exec(db: db, sql: firstOK))
+        let dupePair = """
+            INSERT INTO routine_exercise_set
+                (client_uuid, routine_exercise_id, set_number, set_type, updated_at)
+            VALUES ('aaaaaaaa-0000-0000-0000-000000000005', \(reID), 1, 'WORKING', \(now));
+            """
+        XCTAssertThrowsError(try exec(db: db, sql: dupePair),
+                             "UNIQUE(routine_exercise_id, set_number) should reject duplicate (reID,1)")
+
+        // 5. Index exists in sqlite_master.
+        let idxName = try scalarText(db,
+            "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_res_routine_exercise';")
+        XCTAssertEqual(idxName, "idx_res_routine_exercise",
+                       "V3 migration should have created idx_res_routine_exercise")
+    }
+
+    /// V3 backfill must insert one WORKING row per set_number (1..target_sets) for
+    /// each pre-existing routine_exercise row, copying rep range targets.
+    /// Strategy: apply V1+V2 manually, insert routine + routine_exercise rows, set
+    /// schema_meta.version=2, then call migrate() so only V3 runs and the backfill
+    /// fires against the seeded rows.
+    func testV3BackfillPopulatesOneRowPerSetNumberForExistingRoutineExercises() throws {
+        let db = try unwrapDB()
+
+        // Apply V1 schema (creates schema_meta + all V1 tables).
+        try applySchema(db)
+        // Apply V2 ALTERs + index manually (mirror Migrator.applyV2).
+        try exec(db: db, sql: "ALTER TABLE routine_exercise ADD COLUMN target_duration_secs_min INTEGER;")
+        try exec(db: db, sql: "ALTER TABLE routine_exercise ADD COLUMN target_duration_secs_max INTEGER;")
+        try exec(db: db, sql: """
+            CREATE INDEX IF NOT EXISTS idx_session_routine_finished
+                ON session(routine_id, finished_at DESC);
+            """)
+
+        // Seed a couple of exercises so routine_exercise FK has valid targets.
+        try seedIfEmpty(db)
+
+        // Stamp schema_meta to version 2 so the next migrate() only runs V3.
+        let now = Int(Date().timeIntervalSince1970)
+        try exec(db: db, sql: """
+            INSERT INTO schema_meta (id, version, applied_at) VALUES (1, 2, \(now))
+            ON CONFLICT(id) DO UPDATE SET version = 2, applied_at = \(now);
+            """)
+
+        // Insert a routine + two routine_exercise rows (different target_sets + rep ranges).
+        try exec(db: db, sql: """
+            INSERT INTO routine (client_uuid, name, type, sort_order, created_at, updated_at)
+            VALUES ('bbbbbbbb-0000-0000-0000-000000000001', 'Backfill R', 'LIFT', 0, \(now), \(now));
+            """)
+        let routineID = Int(sqlite3_last_insert_rowid(db))
+
+        let ex1 = try scalarInt(db, "SELECT id FROM exercise WHERE is_custom = 0 LIMIT 1;")!
+        let ex2 = try scalarInt(db, "SELECT id FROM exercise WHERE is_custom = 0 AND id != \(ex1) LIMIT 1;")!
+
+        try exec(db: db, sql: """
+            INSERT INTO routine_exercise
+                (client_uuid, routine_id, exercise_id, sort_order, target_sets,
+                 target_rep_min, target_rep_max, updated_at)
+            VALUES ('bbbbbbbb-0000-0000-0000-000000000002', \(routineID), \(ex1), 0, 3, 5, 8, \(now));
+            """)
+        let re1ID = Int(sqlite3_last_insert_rowid(db))
+
+        try exec(db: db, sql: """
+            INSERT INTO routine_exercise
+                (client_uuid, routine_id, exercise_id, sort_order, target_sets,
+                 target_rep_min, target_rep_max, updated_at)
+            VALUES ('bbbbbbbb-0000-0000-0000-000000000003', \(routineID), \(ex2), 1, 4, 10, 12, \(now));
+            """)
+        let re2ID = Int(sqlite3_last_insert_rowid(db))
+
+        // Now run migrate(); only V3 should fire and backfill from the rows we inserted.
+        XCTAssertNoThrow(try migrate(db), "migrate() should run V3 only and not throw")
+
+        // Verify schema bumped to 3.
+        let version = try scalarInt(db, "SELECT version FROM schema_meta WHERE id = 1;")
+        XCTAssertEqual(version, 3, "migrate() should have bumped schema_meta to 3")
+
+        // Verify backfill for re1: 3 rows, set_number 1..3, set_type WORKING, reps 5..8.
+        let re1Count = try scalarInt(db,
+            "SELECT COUNT(*) FROM routine_exercise_set WHERE routine_exercise_id = \(re1ID);")
+        XCTAssertEqual(re1Count, 3, "Expected 3 backfilled rows for re1 (target_sets=3)")
+
+        var stmt1: OpaquePointer?
+        let sel1 = """
+            SELECT set_number, set_type, target_reps_min, target_reps_max
+            FROM routine_exercise_set
+            WHERE routine_exercise_id = \(re1ID)
+            ORDER BY set_number ASC;
+            """
+        XCTAssertEqual(sqlite3_prepare_v2(db, sel1, -1, &stmt1, nil), SQLITE_OK)
+        var re1Rows: [(Int, String, Int, Int)] = []
+        while sqlite3_step(stmt1) == SQLITE_ROW {
+            re1Rows.append((
+                Int(sqlite3_column_int64(stmt1, 0)),
+                columnText(stmt1!, 1),
+                Int(sqlite3_column_int64(stmt1, 2)),
+                Int(sqlite3_column_int64(stmt1, 3))
+            ))
+        }
+        sqlite3_finalize(stmt1)
+        XCTAssertEqual(re1Rows.map { $0.0 }, [1, 2, 3])
+        XCTAssertEqual(Set(re1Rows.map { $0.1 }), ["WORKING"])
+        XCTAssertEqual(Set(re1Rows.map { $0.2 }), [5])
+        XCTAssertEqual(Set(re1Rows.map { $0.3 }), [8])
+
+        // Verify backfill for re2: 4 rows, set_number 1..4, reps 10..12.
+        let re2Count = try scalarInt(db,
+            "SELECT COUNT(*) FROM routine_exercise_set WHERE routine_exercise_id = \(re2ID);")
+        XCTAssertEqual(re2Count, 4, "Expected 4 backfilled rows for re2 (target_sets=4)")
+
+        var stmt2: OpaquePointer?
+        let sel2 = """
+            SELECT set_number, set_type, target_reps_min, target_reps_max
+            FROM routine_exercise_set
+            WHERE routine_exercise_id = \(re2ID)
+            ORDER BY set_number ASC;
+            """
+        XCTAssertEqual(sqlite3_prepare_v2(db, sel2, -1, &stmt2, nil), SQLITE_OK)
+        var re2Rows: [(Int, String, Int, Int)] = []
+        while sqlite3_step(stmt2) == SQLITE_ROW {
+            re2Rows.append((
+                Int(sqlite3_column_int64(stmt2, 0)),
+                columnText(stmt2!, 1),
+                Int(sqlite3_column_int64(stmt2, 2)),
+                Int(sqlite3_column_int64(stmt2, 3))
+            ))
+        }
+        sqlite3_finalize(stmt2)
+        XCTAssertEqual(re2Rows.map { $0.0 }, [1, 2, 3, 4])
+        XCTAssertEqual(Set(re2Rows.map { $0.1 }), ["WORKING"])
+        XCTAssertEqual(Set(re2Rows.map { $0.2 }), [10])
+        XCTAssertEqual(Set(re2Rows.map { $0.3 }), [12])
+    }
+
+    /// Fresh install with no routine_exercise rows: V3 backfill is a no-op.
+    /// Migrating an empty schema without seed produces zero set rows.
+    func testV3MigrationOnFreshInstall_NoRoutineExerciseRows_BackfillIsNoop() throws {
+        let db = try unwrapDB()
+        try migrate(db)
+        // Skip seedIfEmpty here — V3 seed now inserts sample routines.
+
+        let count = try scalarInt(db, "SELECT COUNT(*) FROM routine_exercise_set;")
+        XCTAssertEqual(count, 0,
+                       "Fresh schema with no routine_exercise rows → backfill produces zero set rows")
+    }
+
+    /// V3 seed inserts sample routines (Push Day, Core & Holds, Tempo Tuesday)
+    /// with per-set plans. Verify they land after seedIfEmpty on a fresh DB.
+    func testV3SeedInsertsSampleRoutinesAndPlannedSets() throws {
+        let db = try unwrapDB()
+        try migrate(db)
+        try seedIfEmpty(db)
+
+        let routineCount = try scalarInt(db, "SELECT COUNT(*) FROM routine;") ?? 0
+        XCTAssertEqual(routineCount, 3, "V3 seed inserts 3 sample routines")
+
+        let plannedSetCount = try scalarInt(db, "SELECT COUNT(*) FROM routine_exercise_set;") ?? 0
+        XCTAssertGreaterThan(plannedSetCount, 0, "V3 seed inserts planned set rows for sample routines")
     }
 
     // MARK: - Helpers
