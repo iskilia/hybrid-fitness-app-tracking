@@ -50,9 +50,20 @@ struct RunActiveSessionView: View {
             titleVisibility: .visible
         ) {
             Button("Continue", role: .destructive) {
-                Task { await vm.confirmStorageEviction(); router?.popToRoot() }
+                Task { if await vm.confirmStorageEviction() { router?.popToRoot() } }
             }
             Button("Cancel", role: .cancel) { router?.popToRoot() }
+        }
+        .alert(
+            "Couldn't free space",
+            isPresented: Binding(
+                get: { vm.errorMessage != nil },
+                set: { if !$0 { vm.errorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(vm.errorMessage ?? "")
         }
     }
 

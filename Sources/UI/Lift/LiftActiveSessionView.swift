@@ -53,9 +53,20 @@ struct LiftActiveSessionView: View {
             titleVisibility: .visible
         ) {
             Button("Continue", role: .destructive) {
-                Task { await viewModel.confirmStorageEviction(); router?.popToRoot() }
+                Task { if await viewModel.confirmStorageEviction() { router?.popToRoot() } }
             }
             Button("Cancel", role: .cancel) { router?.popToRoot() }
+        }
+        .alert(
+            "Couldn't free space",
+            isPresented: Binding(
+                get: { viewModel.errorMessage != nil },
+                set: { if !$0 { viewModel.errorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(viewModel.errorMessage ?? "")
         }
     }
 

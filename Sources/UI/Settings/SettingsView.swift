@@ -13,7 +13,7 @@ struct SettingsView: View {
                 unitsSection
                 dataLimitSection
                 #if DEBUG
-                debugSection   // TEMP PASS-2 TESTING — remove before merge.
+                debugSection   // TEMP PASS-2 TESTING — TODO(pass-4): remove once Pass 4 ships.
                 #endif
                 footer
             }
@@ -92,9 +92,21 @@ struct SettingsView: View {
         } message: {
             Text("Lowering the limit will permanently delete your oldest history to fit the new size. This can't be undone.")
         }
+        .alert(
+            "Couldn't free space",
+            isPresented: Binding(
+                get: { viewModel.storageErrorMessage != nil },
+                set: { if !$0 { viewModel.storageErrorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(viewModel.storageErrorMessage ?? "")
+        }
     }
 
-    // TEMP PASS-2 TESTING — small options let the limit drop below seeded data. Remove before merge.
+    // TEMP PASS-2 TESTING — small options let the limit drop below seeded data.
+    // TODO(pass-4): drop the [1, 2, 5] branch, return to the 10–200 production range.
     private var limitOptions: [Int] {
         #if DEBUG
         return [1, 2, 5] + Array(stride(from: 10, through: 200, by: 10))

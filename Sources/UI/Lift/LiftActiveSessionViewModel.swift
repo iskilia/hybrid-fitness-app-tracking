@@ -217,8 +217,16 @@ final class LiftActiveSessionViewModel {
         return true
     }
 
-    func confirmStorageEviction() async {
-        _ = try? await storageGuard.reconcile(maxDataMb: maxDataMb)
+    /// Returns true if eviction succeeded (caller may pop to Home); false on failure,
+    /// in which case `errorMessage` is set and the caller should keep the user here.
+    func confirmStorageEviction() async -> Bool {
+        do {
+            _ = try await storageGuard.reconcile(maxDataMb: maxDataMb)
+            return true
+        } catch {
+            errorMessage = "Couldn't free space: \(error.localizedDescription)"
+            return false
+        }
     }
 
     func abandon() async {

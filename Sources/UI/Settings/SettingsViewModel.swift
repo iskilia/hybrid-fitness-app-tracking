@@ -16,6 +16,7 @@ final class SettingsViewModel {
     private let storageGuard: StorageGuard
     private var previousMaxDataMb: Int = 10
     var showLimitDecreaseConfirm = false
+    var storageErrorMessage: String?
 
     init(dbManager: DatabaseManager) {
         self.dbManager = dbManager
@@ -72,7 +73,12 @@ final class SettingsViewModel {
     func confirmLimitDecrease() async {
         previousMaxDataMb = maxDataMb
         await persistLimit(maxDataMb)
-        _ = try? await storageGuard.reconcile(maxDataMb: maxDataMb)   // may clear all history
+        do {
+            _ = try await storageGuard.reconcile(maxDataMb: maxDataMb)   // may clear all history
+        } catch {
+            // Limit is already persisted (lower); cleanup failed, so the DB may still be over.
+            storageErrorMessage = "Couldn't free space: \(error.localizedDescription)"
+        }
         await refreshFooter()
     }
 
@@ -111,7 +117,7 @@ final class SettingsViewModel {
         return (attrs?[.size] as? NSNumber)?.int64Value ?? 0
     }
 
-    // MARK: - TEMP PASS-2 TESTING — remove before merge.
+    // MARK: - TEMP PASS-2 TESTING — TODO(pass-4): remove this whole harness once Pass 4 ships.
     #if DEBUG
     var debugBusy = false
     var debugLogicalMB: Double = 0
