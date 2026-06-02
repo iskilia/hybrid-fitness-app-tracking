@@ -59,7 +59,6 @@ struct RoutineRepository {
             try insertRoutine(db, routine)
             for entry in exerciseEntries { try insertRoutineExercise(db, entry) }
             for entry in runEntries { try insertRoutineRun(db, entry) }
-            SnapshotHook.notifyChange()
         }
     }
 
@@ -100,7 +99,6 @@ struct RoutineRepository {
 
             for entry in exerciseEntries { try insertRoutineExercise(db, entry) }
             for entry in runEntries { try insertRoutineRun(db, entry) }
-            SnapshotHook.notifyChange()
         }
     }
 
@@ -116,7 +114,6 @@ struct RoutineRepository {
             bindDate(stmt, 2, now)
             bindUUID(stmt, 3, id)
             _ = try step(stmt)
-            SnapshotHook.notifyChange()
         }
     }
 
@@ -330,14 +327,12 @@ struct RoutineRepository {
                 ))
             }
         }
-        SnapshotHook.notifyChange()
     }
 
     func appendSet(_ s: RoutineExerciseSet) async throws {
         try await dbManager.transaction { db in
             try insertSet(db, s)
         }
-        SnapshotHook.notifyChange()
     }
 
     func updateSet(_ s: RoutineExerciseSet) async throws {
@@ -364,7 +359,6 @@ struct RoutineRepository {
             bindUUID(stmt, 10, s.clientUUID)
             _ = try step(stmt)
         }
-        SnapshotHook.notifyChange()
     }
 
     func removeSet(id: UUID) async throws {
@@ -374,7 +368,6 @@ struct RoutineRepository {
             bindUUID(stmt, 1, id)
             _ = try step(stmt)
         }
-        SnapshotHook.notifyChange()
     }
 
     private func insertSet(_ db: OpaquePointer, _ s: RoutineExerciseSet) throws {

@@ -7,10 +7,9 @@ import SQLite3
 final class SettingsViewModel {
     var weightUnit: WeightUnit = .kg
     var distanceUnit: DistanceUnit = .km
-    var bodyWeightInput: String = ""
+    var maxDataMb: Int = 10
     var sessionCount: Int = 0
     var dbSizeBytes: Int64 = 0
-    var isExporting = false
 
     private let dbManager: DatabaseManager
     private let profileRepo: UserProfileRepository
@@ -30,7 +29,7 @@ final class SettingsViewModel {
             if let p = try await profileRepo.get() {
                 weightUnit = p.weightUnit
                 distanceUnit = p.distanceUnit
-                bodyWeightInput = p.bodyWeightKg.map { String(format: "%.1f", $0) } ?? ""
+                maxDataMb = p.maxDataMb
             }
             sessionCount = try await countSessions()
             dbSizeBytes = dbFileSize()
@@ -40,24 +39,11 @@ final class SettingsViewModel {
     }
 
     func save() async {
-        let weight = Double(bodyWeightInput.trimmingCharacters(in: .whitespaces))
         try? await profileRepo.upsert(
             weightUnit: weightUnit,
             distanceUnit: distanceUnit,
-            bodyWeightKg: weight
+            maxDataMb: maxDataMb
         )
-    }
-
-    func exportCSV() async -> URL? {
-        isExporting = true
-        defer { isExporting = false }
-        return try? await CSVExporter(dbManager: dbManager).export()
-    }
-
-    func exportJSON() async -> URL? {
-        isExporting = true
-        defer { isExporting = false }
-        return try? await JSONExporter(dbManager: dbManager).export()
     }
 
     private func countSessions() async throws -> Int {

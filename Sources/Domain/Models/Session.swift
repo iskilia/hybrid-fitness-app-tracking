@@ -26,7 +26,6 @@ struct Session: Codable, Identifiable, Hashable, Sendable {
     let status: SessionStatus
     let startedAt: Date
     let finishedAt: Date?
-    let bodyWeightKg: Double?
     let notes: String?
     let updatedAt: Date
     let deletedAt: Date?
@@ -39,7 +38,6 @@ struct Session: Codable, Identifiable, Hashable, Sendable {
         case status
         case startedAt   = "started_at"
         case finishedAt  = "finished_at"
-        case bodyWeightKg = "body_weight_kg"
         case notes
         case updatedAt   = "updated_at"
         case deletedAt   = "deleted_at"

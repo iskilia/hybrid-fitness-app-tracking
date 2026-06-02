@@ -20,7 +20,7 @@ struct UserProfile: Codable, Identifiable, Hashable, Sendable {
     let name: String
     let weightUnit: WeightUnit
     let distanceUnit: DistanceUnit
-    let bodyWeightKg: Double?
+    let maxDataMb: Int
     let createdAt: Date
     let updatedAt: Date
 
@@ -30,7 +30,7 @@ struct UserProfile: Codable, Identifiable, Hashable, Sendable {
         case name
         case weightUnit    = "weight_unit"
         case distanceUnit  = "distance_unit"
-        case bodyWeightKg  = "body_weight_kg"
+        case maxDataMb     = "max_data_mb"
         case createdAt     = "created_at"
         case updatedAt     = "updated_at"
     }

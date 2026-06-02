@@ -53,7 +53,6 @@ struct SessionRepository {
                 status: .inProgress,
                 startedAt: now,
                 finishedAt: nil,
-                bodyWeightKg: nil,
                 notes: nil,
                 updatedAt: now,
                 deletedAt: nil
@@ -77,7 +76,6 @@ struct SessionRepository {
             bindDate(stmt, 2, now)
             bindUUID(stmt, 3, id)
             _ = try step(stmt)
-            SnapshotHook.notifyChange()
         }
     }
 
@@ -219,7 +217,7 @@ struct SessionRepository {
     private func sessionSelectSQL() -> String {
         """
         SELECT s.id, s.client_uuid, s.routine_id, s.type, s.status,
-               s.started_at, s.finished_at, s.body_weight_kg, s.notes,
+               s.started_at, s.finished_at, s.notes,
                s.updated_at, s.deleted_at
         FROM session s
         """
@@ -234,7 +232,7 @@ struct SessionRepository {
             let statusStr = columnText(stmt, 4),
             let status = SessionStatus(rawValue: statusStr),
             let startedAt = columnDate(stmt, 5),
-            let updatedAt = columnDate(stmt, 9)
+            let updatedAt = columnDate(stmt, 8)
         else {
             throw DatabaseError.stepFailed("session row mapping failed")
         }
@@ -246,10 +244,9 @@ struct SessionRepository {
             status: status,
             startedAt: startedAt,
             finishedAt: columnDate(stmt, 6),
-            bodyWeightKg: columnDouble(stmt, 7),
-            notes: columnText(stmt, 8),
+            notes: columnText(stmt, 7),
             updatedAt: updatedAt,
-            deletedAt: columnDate(stmt, 10)
+            deletedAt: columnDate(stmt, 9)
         )
     }
 }
