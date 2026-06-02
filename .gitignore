@@ -29,3 +29,7 @@ Hybrid.xcodeproj/
 # macOS
 .AppleDouble
 .LSOverride
+
+
+# pipeline cluade stuff
+.pipeline

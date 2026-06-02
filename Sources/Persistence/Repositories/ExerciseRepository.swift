@@ -196,7 +196,6 @@ struct ExerciseRepository {
                 let muscleID = try resolveMuscleID(db, uuid: muscleUUID)
                 try insertExerciseMuscle(db, exerciseRowID: rowID, muscleID: muscleID, role: role)
             }
-            SnapshotHook.notifyChange()
         }
     }
 
@@ -261,7 +260,6 @@ struct ExerciseRepository {
                 let muscleID = try resolveMuscleID(db, uuid: muscleUUID)
                 try insertExerciseMuscle(db, exerciseRowID: rowID, muscleID: muscleID, role: role)
             }
-            if exercise.isCustom { SnapshotHook.notifyChange() }
         }
     }
 

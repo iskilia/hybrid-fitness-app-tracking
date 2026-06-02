@@ -1,6 +1,6 @@
 # The Project
 
-Hybrid Fitness App Tracker. PRD can be found in PRD.md. Screenshots of iPhone Application can be found under ./screenshots
+Hybrid Fitness App Tracker. PRDs can be found in ./Documents/PRDs. Screenshots of iPhone Application can be found under ./screenshots
 
 ## Quick Reference
 

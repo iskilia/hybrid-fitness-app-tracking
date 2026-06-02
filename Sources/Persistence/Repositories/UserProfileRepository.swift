@@ -10,7 +10,7 @@ struct UserProfileRepository {
         try await dbManager.read { db in
             let stmt = try prepare(db, """
                 SELECT id, client_uuid, name, weight_unit, distance_unit,
-                       body_weight_kg, created_at, updated_at
+                       max_data_mb, created_at, updated_at
                 FROM user_profile WHERE id = 1;
                 """)
             defer { finalize(stmt) }
@@ -31,32 +31,32 @@ struct UserProfileRepository {
                 name: name,
                 weightUnit: wu,
                 distanceUnit: du,
-                bodyWeightKg: columnDouble(stmt, 5),
+                maxDataMb: Int(sqlite3_column_int64(stmt, 5)),
                 createdAt: createdAt,
                 updatedAt: updatedAt
             )
         }
     }
 
-    func upsert(weightUnit: WeightUnit, distanceUnit: DistanceUnit, bodyWeightKg: Double?) async throws {
+    func upsert(weightUnit: WeightUnit, distanceUnit: DistanceUnit, maxDataMb: Int) async throws {
         try await dbManager.transaction { db in
             let now = Date()
             let stmt = try prepare(db, """
                 INSERT INTO user_profile (id, client_uuid, name, weight_unit,
-                                         distance_unit, body_weight_kg,
+                                         distance_unit, max_data_mb,
                                          created_at, updated_at)
                 VALUES (1, ?, '', ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     weight_unit = excluded.weight_unit,
                     distance_unit = excluded.distance_unit,
-                    body_weight_kg = excluded.body_weight_kg,
+                    max_data_mb = excluded.max_data_mb,
                     updated_at = excluded.updated_at;
                 """)
             defer { finalize(stmt) }
             bindUUID(stmt, 1, UUID())
             bindText(stmt, 2, weightUnit.rawValue)
             bindText(stmt, 3, distanceUnit.rawValue)
-            bindDouble(stmt, 4, bodyWeightKg)
+            bindInt(stmt, 4, maxDataMb)
             bindDate(stmt, 5, now)
             bindDate(stmt, 6, now)
             _ = try step(stmt)

@@ -14,15 +14,6 @@ public func applySchema(_ db: OpaquePointer) throws {
         "PRAGMA foreign_keys = ON;",
         "PRAGMA journal_mode = WAL;",
 
-        // schema_meta
-        """
-        CREATE TABLE IF NOT EXISTS schema_meta (
-            id         INTEGER PRIMARY KEY CHECK (id = 1),
-            version    INTEGER NOT NULL,
-            applied_at INTEGER NOT NULL
-        );
-        """,
-
         // user_profile
         """
         CREATE TABLE IF NOT EXISTS user_profile (
@@ -31,7 +22,7 @@ public func applySchema(_ db: OpaquePointer) throws {
             name           TEXT NOT NULL DEFAULT '',
             weight_unit    TEXT NOT NULL DEFAULT 'KG' CHECK (weight_unit IN ('KG','LB')),
             distance_unit  TEXT NOT NULL DEFAULT 'KM' CHECK (distance_unit IN ('KM','MI')),
-            body_weight_kg REAL,
+            max_data_mb    INTEGER NOT NULL DEFAULT 10,
             created_at     INTEGER NOT NULL,
             updated_at     INTEGER NOT NULL
         );
@@ -141,17 +132,19 @@ public func applySchema(_ db: OpaquePointer) throws {
         // routine_exercise
         """
         CREATE TABLE IF NOT EXISTS routine_exercise (
-            id             INTEGER PRIMARY KEY,
-            client_uuid    TEXT NOT NULL UNIQUE,
-            routine_id     INTEGER NOT NULL REFERENCES routine(id) ON DELETE CASCADE,
-            exercise_id    INTEGER NOT NULL REFERENCES exercise(id),
-            sort_order     INTEGER NOT NULL DEFAULT 0,
-            target_sets    INTEGER,
-            target_rep_min INTEGER,
-            target_rep_max INTEGER,
-            target_rpe     REAL,
-            notes          TEXT,
-            updated_at     INTEGER NOT NULL
+            id                       INTEGER PRIMARY KEY,
+            client_uuid              TEXT NOT NULL UNIQUE,
+            routine_id               INTEGER NOT NULL REFERENCES routine(id) ON DELETE CASCADE,
+            exercise_id              INTEGER NOT NULL REFERENCES exercise(id),
+            sort_order               INTEGER NOT NULL DEFAULT 0,
+            target_sets              INTEGER,
+            target_rep_min           INTEGER,
+            target_rep_max           INTEGER,
+            target_rpe               REAL,
+            target_duration_secs_min INTEGER,
+            target_duration_secs_max INTEGER,
+            notes                    TEXT,
+            updated_at               INTEGER NOT NULL
         );
         """,
 
@@ -165,6 +158,25 @@ public func applySchema(_ db: OpaquePointer) throws {
             sort_order      INTEGER NOT NULL DEFAULT 0,
             notes           TEXT,
             updated_at      INTEGER NOT NULL
+        );
+        """,
+
+        // routine_exercise_set
+        """
+        CREATE TABLE IF NOT EXISTS routine_exercise_set (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            client_uuid TEXT NOT NULL UNIQUE,
+            routine_exercise_id INTEGER NOT NULL REFERENCES routine_exercise(id) ON DELETE CASCADE,
+            set_number INTEGER NOT NULL,
+            set_type TEXT NOT NULL CHECK (set_type IN ('WARMUP','WORKING','BACKOFF')),
+            target_weight_kg REAL,
+            target_reps_min INTEGER,
+            target_reps_max INTEGER,
+            target_duration_secs_min INTEGER,
+            target_duration_secs_max INTEGER,
+            notes TEXT,
+            updated_at INTEGER NOT NULL,
+            UNIQUE(routine_exercise_id, set_number)
         );
         """,
 
@@ -189,7 +201,6 @@ public func applySchema(_ db: OpaquePointer) throws {
                                CHECK (status IN ('IN_PROGRESS','COMPLETED','ABANDONED')),
             started_at     INTEGER NOT NULL,
             finished_at    INTEGER,
-            body_weight_kg REAL,
             notes          TEXT,
             updated_at     INTEGER NOT NULL,
             deleted_at     INTEGER
@@ -276,6 +287,8 @@ public func applySchema(_ db: OpaquePointer) throws {
         "CREATE INDEX IF NOT EXISTS idx_session_set_updated       ON session_set(updated_at);",
         "CREATE INDEX IF NOT EXISTS idx_exercise_updated          ON exercise(updated_at);",
         "CREATE INDEX IF NOT EXISTS idx_routine_updated           ON routine(updated_at);",
+        "CREATE INDEX IF NOT EXISTS idx_session_routine_finished ON session(routine_id, finished_at DESC);",
+        "CREATE INDEX IF NOT EXISTS idx_res_routine_exercise ON routine_exercise_set(routine_exercise_id, set_number);",
     ]
 
     for sql in statements {
