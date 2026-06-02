@@ -43,6 +43,13 @@ final class RunActiveSessionViewModel {
     var isFinished = false
     var errorMessage: String?
 
+    // MARK: - Storage guard
+
+    private let storageGuard: StorageGuard
+    private let profileRepo: UserProfileRepository
+    var showStorageFullConfirm = false
+    private var maxDataMb: Int = 10
+
     // MARK: - Private
 
     private let dbManager: DatabaseManager
@@ -50,6 +57,8 @@ final class RunActiveSessionViewModel {
 
     init(dbManager: DatabaseManager) {
         self.dbManager = dbManager
+        self.storageGuard = StorageGuard(dbManager: dbManager)
+        self.profileRepo = UserProfileRepository(dbManager: dbManager)
     }
 
     // MARK: - Load & start
@@ -120,6 +129,27 @@ final class RunActiveSessionViewModel {
             try await SessionRepository(dbManager: dbManager).finish(id: sess.clientUUID)
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - Storage check (called after summary sheet dismisses)
+
+    func checkStorageAfterFinish() async -> Bool {   // true => safe to pop
+        if let p = try? await profileRepo.get() { maxDataMb = p.maxDataMb }
+        let over = (try? await storageGuard.isOverLimit(maxDataMb: maxDataMb)) ?? false
+        if over { showStorageFullConfirm = true; return false }
+        return true
+    }
+
+    /// Returns true if eviction succeeded (caller may pop to Home); false on failure,
+    /// in which case `errorMessage` is set and the caller should keep the user here.
+    func confirmStorageEviction() async -> Bool {
+        do {
+            _ = try await storageGuard.reconcile(maxDataMb: maxDataMb)
+            return true
+        } catch {
+            errorMessage = "Couldn't free space: \(error.localizedDescription)"
+            return false
         }
     }
 

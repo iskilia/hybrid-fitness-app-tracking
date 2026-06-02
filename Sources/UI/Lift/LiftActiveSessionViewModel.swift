@@ -63,6 +63,10 @@ final class LiftActiveSessionViewModel {
     private let sessionSetRepo: SessionSetRepository
     private let routineRepo: RoutineRepository
     private let exerciseRepo: ExerciseRepository
+    private let storageGuard: StorageGuard
+    private let profileRepo: UserProfileRepository
+    var showStorageFullConfirm = false
+    private var maxDataMb: Int = 10
 
     init(sessionID: UUID, dbManager: DatabaseManager) {
         self.sessionID = sessionID
@@ -70,6 +74,8 @@ final class LiftActiveSessionViewModel {
         self.sessionSetRepo  = SessionSetRepository(dbManager: dbManager)
         self.routineRepo     = RoutineRepository(dbManager: dbManager)
         self.exerciseRepo    = ExerciseRepository(dbManager: dbManager)
+        self.storageGuard    = StorageGuard(dbManager: dbManager)
+        self.profileRepo     = UserProfileRepository(dbManager: dbManager)
     }
 
     // MARK: - Load
@@ -201,8 +207,26 @@ final class LiftActiveSessionViewModel {
 
     // MARK: - Finish / Abandon
 
-    func finish() async {
+    /// Returns true if the caller should pop to Home immediately;
+    /// false if a storage-full confirmation is now showing (caller waits).
+    func finishAndCheckStorage() async -> Bool {
         try? await sessionRepo.finish(id: sessionID)
+        if let p = try? await profileRepo.get() { maxDataMb = p.maxDataMb }
+        let over = (try? await storageGuard.isOverLimit(maxDataMb: maxDataMb)) ?? false
+        if over { showStorageFullConfirm = true; return false }
+        return true
+    }
+
+    /// Returns true if eviction succeeded (caller may pop to Home); false on failure,
+    /// in which case `errorMessage` is set and the caller should keep the user here.
+    func confirmStorageEviction() async -> Bool {
+        do {
+            _ = try await storageGuard.reconcile(maxDataMb: maxDataMb)
+            return true
+        } catch {
+            errorMessage = "Couldn't free space: \(error.localizedDescription)"
+            return false
+        }
     }
 
     func abandon() async {

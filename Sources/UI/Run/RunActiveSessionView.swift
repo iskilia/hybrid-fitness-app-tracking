@@ -38,8 +38,32 @@ struct RunActiveSessionView: View {
                 dbManager: dbManager
             ) {
                 showSummary = false
-                router?.popToRoot()
+                Task {
+                    let done = await vm.checkStorageAfterFinish()
+                    if done { router?.popToRoot() }
+                }
             }
+        }
+        .confirmationDialog(
+            "Your storage limit is full. Finishing will delete your oldest history. Continue?",
+            isPresented: $vm.showStorageFullConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Continue", role: .destructive) {
+                Task { if await vm.confirmStorageEviction() { router?.popToRoot() } }
+            }
+            Button("Cancel", role: .cancel) { router?.popToRoot() }
+        }
+        .alert(
+            "Couldn't free space",
+            isPresented: Binding(
+                get: { vm.errorMessage != nil },
+                set: { if !$0 { vm.errorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(vm.errorMessage ?? "")
         }
     }
 
