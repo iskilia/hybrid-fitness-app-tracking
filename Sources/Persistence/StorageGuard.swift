@@ -22,25 +22,23 @@ struct StorageGuard {
 
     // MARK: - Logical size
 
+    /// Reads a single-row, single-integer PRAGMA on an already-open handle.
+    private func pragmaInt64(_ db: OpaquePointer, _ pragma: String) throws -> Int64 {
+        let stmt = try prepare(db, pragma)
+        defer { finalize(stmt) }
+        _ = try step(stmt)
+        return sqlite3_column_int64(stmt, 0)   // sqlite3_int64 → Int64, no truncation
+    }
+
     /// Returns (page_count − freelist_count) × page_size.
     /// Operates on an already-open handle; opens NO transaction.
+    /// All arithmetic is Int64 end-to-end so the result is exact regardless of the
+    /// platform word size (no Int/Int32 intermediate to overflow on a large DB).
     func logicalSizeBytes(_ db: OpaquePointer) throws -> Int64 {
-        let s1 = try prepare(db, "PRAGMA page_count;")
-        defer { finalize(s1) }
-        _ = try step(s1)
-        let pageCount = Int(sqlite3_column_int64(s1, 0))
-
-        let s2 = try prepare(db, "PRAGMA freelist_count;")
-        defer { finalize(s2) }
-        _ = try step(s2)
-        let freelistCount = Int(sqlite3_column_int64(s2, 0))
-
-        let s3 = try prepare(db, "PRAGMA page_size;")
-        defer { finalize(s3) }
-        _ = try step(s3)
-        let pageSize = Int(sqlite3_column_int64(s3, 0))
-
-        return Int64(pageCount - freelistCount) * Int64(pageSize)
+        let pageCount     = try pragmaInt64(db, "PRAGMA page_count;")
+        let freelistCount = try pragmaInt64(db, "PRAGMA freelist_count;")
+        let pageSize      = try pragmaInt64(db, "PRAGMA page_size;")
+        return (pageCount - freelistCount) * pageSize
     }
 
     // MARK: - Limit
