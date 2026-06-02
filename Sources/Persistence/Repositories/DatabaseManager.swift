@@ -65,4 +65,25 @@ public actor DatabaseManager {
             throw error
         }
     }
+
+    /// Wraps `work` in BEGIN / ROLLBACK. ALWAYS rolls back — persists nothing.
+    public func transactionRollingBack<T: Sendable>(
+        _ work: @Sendable (OpaquePointer) throws -> T
+    ) throws -> T {
+        let ptr = handle()
+        try execSQL(ptr, "BEGIN;")
+        do {
+            let result = try work(ptr)
+            try execSQL(ptr, "ROLLBACK;")
+            return result
+        } catch {
+            try? execSQL(ptr, "ROLLBACK;")
+            throw error
+        }
+    }
+
+    /// Runs VACUUM to reclaim freed pages. Must NOT be called inside a transaction.
+    public func vacuum() throws {
+        try execSQL(handle(), "VACUUM;")
+    }
 }

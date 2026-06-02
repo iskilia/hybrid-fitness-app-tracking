@@ -19,6 +19,19 @@ struct CustomExerciseEditorView: View {
             }
             .scrollContentBackground(.hidden)
             .background(AppColor.background)
+            .confirmationDialog(
+                "This will delete your oldest history. Continue?",
+                isPresented: $viewModel.showEvictionConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Continue", role: .destructive) { Task { await viewModel.confirmEviction() } }
+                Button("Cancel", role: .cancel) { viewModel.cancelEviction() }
+            }
+            .alert("Not enough space", isPresented: $viewModel.showImpossibleAlert) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("Not enough space — edit your data first.")
+            }
             .navigationTitle("NEW EXERCISE")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbarButtons }

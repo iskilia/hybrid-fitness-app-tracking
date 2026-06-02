@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SQLite3
 
 // MARK: - MuscleSelection
 
@@ -30,13 +31,22 @@ final class CustomExerciseEditorViewModel {
     var errorMessage: String?
     var didSave = false
 
+    var showEvictionConfirm = false
+    var showImpossibleAlert = false
+    private var pendingInsert: (@Sendable (OpaquePointer) throws -> Void)?
+
     /// Non-nil when editing an existing exercise (integer row ID).
     private let editingExerciseID: Int?
     private let exerciseRepo: ExerciseRepository
+    private let dbManager: DatabaseManager
+    private let storageGuard: StorageGuard
+    private var maxDataMb: Int = 10
 
     init(dbManager: DatabaseManager, editingExerciseID: Int? = nil) {
         self.editingExerciseID = editingExerciseID
         self.exerciseRepo = ExerciseRepository(dbManager: dbManager)
+        self.dbManager = dbManager
+        self.storageGuard = StorageGuard(dbManager: dbManager)
     }
 
     func load() async {
@@ -51,6 +61,8 @@ final class CustomExerciseEditorViewModel {
             if let exerciseID = editingExerciseID {
                 self.isMetricTypeLocked = try await exerciseRepo.metricTypeLocked(exerciseID: exerciseID)
             }
+
+            if let p = try await UserProfileRepository(dbManager: dbManager).get() { maxDataMb = p.maxDataMb }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -89,10 +101,22 @@ final class CustomExerciseEditorViewModel {
                 }
             if editingExerciseID != nil {
                 try await exerciseRepo.update(exercise, muscles: musclePairs)
-            } else {
-                try await exerciseRepo.create(exercise, muscles: musclePairs)
+                didSave = true
+                return
             }
-            didSave = true
+            let repo = exerciseRepo
+            let insert: @Sendable (OpaquePointer) throws -> Void = { db in
+                try repo.insertExerciseWork(db, exercise, muscles: musclePairs)
+            }
+            let probe = try await storageGuard.probe(insert: insert, maxDataMb: maxDataMb)
+            switch probe {
+            case .fits:
+                try await exerciseRepo.create(exercise, muscles: musclePairs)
+                didSave = true
+            case .needsEviction:
+                pendingInsert = insert
+                showEvictionConfirm = true
+            }
         } catch let dbErr as DatabaseError {
             if case .conflict(let msg) = dbErr {
                 errorMessage = msg
@@ -102,6 +126,23 @@ final class CustomExerciseEditorViewModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    func confirmEviction() async {
+        guard let insert = pendingInsert else { return }
+        pendingInsert = nil
+        do {
+            let outcome = try await storageGuard.commitWithEviction(insert: insert, maxDataMb: maxDataMb)
+            switch outcome {
+            case .fitted:     didSave = true
+            case .impossible: showImpossibleAlert = true
+            }
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    func cancelEviction() {
+        pendingInsert = nil
+        didSave = true   // Cancel = persist nothing, dismiss the editor
     }
 
     /// Encodes integer muscle ID as a UUID with the ID in the last 12 hex digits.

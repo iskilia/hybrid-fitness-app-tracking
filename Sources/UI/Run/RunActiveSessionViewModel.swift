@@ -43,6 +43,13 @@ final class RunActiveSessionViewModel {
     var isFinished = false
     var errorMessage: String?
 
+    // MARK: - Storage guard
+
+    private let storageGuard: StorageGuard
+    private let profileRepo: UserProfileRepository
+    var showStorageFullConfirm = false
+    private var maxDataMb: Int = 10
+
     // MARK: - Private
 
     private let dbManager: DatabaseManager
@@ -50,6 +57,8 @@ final class RunActiveSessionViewModel {
 
     init(dbManager: DatabaseManager) {
         self.dbManager = dbManager
+        self.storageGuard = StorageGuard(dbManager: dbManager)
+        self.profileRepo = UserProfileRepository(dbManager: dbManager)
     }
 
     // MARK: - Load & start
@@ -122,6 +131,17 @@ final class RunActiveSessionViewModel {
             errorMessage = error.localizedDescription
         }
     }
+
+    // MARK: - Storage check (called after summary sheet dismisses)
+
+    func checkStorageAfterFinish() async -> Bool {   // true => safe to pop
+        if let p = try? await profileRepo.get() { maxDataMb = p.maxDataMb }
+        let over = (try? await storageGuard.isOverLimit(maxDataMb: maxDataMb)) ?? false
+        if over { showStorageFullConfirm = true; return false }
+        return true
+    }
+
+    func confirmStorageEviction() async { _ = try? await storageGuard.reconcile(maxDataMb: maxDataMb) }
 
     // MARK: - Private helpers
 

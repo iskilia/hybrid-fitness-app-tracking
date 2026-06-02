@@ -3,7 +3,7 @@ import Foundation
 
 // MARK: - ExerciseRepository
 
-struct ExerciseRepository {
+struct ExerciseRepository: Sendable {
     let dbManager: DatabaseManager
 
     // MARK: - List
@@ -174,28 +174,24 @@ struct ExerciseRepository {
 
     // MARK: - Create (custom exercises only)
 
+    /// Performs the exercise + muscle inserts on an ALREADY-OPEN transaction handle.
+    /// Does NOT open/commit a transaction (caller owns the txn). Same logic as create().
+    func insertExerciseWork(
+        _ db: OpaquePointer,
+        _ exercise: Exercise,
+        muscles: [(UUID, MuscleRole)]
+    ) throws {
+        try insertExercise(db, exercise)
+        let rowID = Int(sqlite3_last_insert_rowid(db))
+        for (muscleUUID, role) in muscles {
+            let muscleID = try resolveMuscleID(db, uuid: muscleUUID)
+            try insertExerciseMuscle(db, exerciseRowID: rowID, muscleID: muscleID, role: role)
+        }
+    }
+
     func create(_ exercise: Exercise, muscles: [(UUID, MuscleRole)]) async throws {
         try await dbManager.transaction { db in
-            try insertExercise(db, exercise)
-            let rowID = Int(sqlite3_last_insert_rowid(db))
-            for (_, role) in muscles {
-                // muscles param carries muscle UUIDs, but muscle table uses integer PKs.
-                // Resolve each UUID to its integer ID.
-                // (The caller passes muscle UUIDs; we look them up.)
-                // Since Muscle doesn't have a UUID, we interpret these as muscle integer IDs
-                // encoded as a UUID string. See note in repo signature.
-                _ = role // handled below via muscleID resolution
-            }
-            // Re-insert using integer muscle IDs from the tuple.
-            // The signature says [(UUID, MuscleRole)] — UUIDs identify muscles.
-            // Muscle table has no client_uuid, so we treat the UUID's integer representation
-            // as unavailable. Callers must pass integer IDs packed as UUIDs via
-            // UUID(uuidString: "00000000-0000-0000-0000-<paddedInt>").
-            // We resolve by querying muscle WHERE id = last 12 digits of UUID string.
-            for (muscleUUID, role) in muscles {
-                let muscleID = try resolveMuscleID(db, uuid: muscleUUID)
-                try insertExerciseMuscle(db, exerciseRowID: rowID, muscleID: muscleID, role: role)
-            }
+            try insertExerciseWork(db, exercise, muscles: muscles)
         }
     }
 

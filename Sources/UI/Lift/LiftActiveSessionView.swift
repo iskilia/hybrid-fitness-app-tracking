@@ -47,6 +47,16 @@ struct LiftActiveSessionView: View {
         } message: {
             Text("All sets will be discarded.")
         }
+        .confirmationDialog(
+            "Your storage limit is full. Finishing will delete your oldest history. Continue?",
+            isPresented: $viewModel.showStorageFullConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Continue", role: .destructive) {
+                Task { await viewModel.confirmStorageEviction(); router?.popToRoot() }
+            }
+            Button("Cancel", role: .cancel) { router?.popToRoot() }
+        }
     }
 
     // MARK: - Subviews
@@ -71,8 +81,8 @@ struct LiftActiveSessionView: View {
         VStack(spacing: AppSpacing.sm) {
             Button {
                 Task {
-                    await viewModel.finish()
-                    router?.popToRoot()
+                    let done = await viewModel.finishAndCheckStorage()
+                    if done { router?.popToRoot() }
                 }
             } label: {
                 Text("FINISH")
