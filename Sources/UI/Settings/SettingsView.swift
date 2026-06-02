@@ -70,7 +70,7 @@ struct SettingsView: View {
                     .font(AppFont.body)
                 Spacer()
                 Picker("Max data", selection: $viewModel.maxDataMb) {
-                    ForEach(1...500, id: \.self) { mb in
+                    ForEach(Array(stride(from: 10, through: 200, by: 10)), id: \.self) { mb in
                         Text("\(mb) MB").tag(mb)
                     }
                 }
