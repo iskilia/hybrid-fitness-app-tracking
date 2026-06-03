@@ -428,6 +428,69 @@ final class Pass3SessionTests: XCTestCase {
             "Session count must be unchanged: simulated Settings open must not evict sessions")
     }
 
+    // MARK: - Feedback: footer reports logical size, not on-disk file slack
+
+    /// After a limit decrease evicts sessions, the Settings footer must report the LOGICAL
+    /// size — (page_count − freelist_count) × page_size, the measure the limit enforces —
+    /// not the on-disk .sqlite byte size, which keeps freed pages as unreclaimed slack and
+    /// would show a value far above the limit (the "incorrect data" bug).
+    func testFooterReportsLogicalSizeAfterEviction() async throws {
+        let db = try makeTempDB()
+        let profileRepo = UserProfileRepository(dbManager: db)
+        let guard1 = StorageGuard(dbManager: db)
+        let sessions = SessionRepository(dbManager: db)
+        let sets = SessionSetRepository(dbManager: db)
+
+        // Start from a higher limit so the decrease-to-1 path is exercised.
+        try await profileRepo.upsert(weightUnit: .kg, distanceUnit: .km, maxDataMb: 5)
+
+        let exerciseID = try await db.read { handle -> Int in
+            let stmt = try Hybrid.prepare(handle,
+                "SELECT id FROM exercise WHERE is_custom = 0 LIMIT 1;")
+            defer { Hybrid.finalize(stmt) }
+            guard try Hybrid.step(stmt) else { return 1 }
+            return Int(sqlite3_column_int64(stmt, 0))
+        }
+        // Seed past 1 MB so isOverLimit(1) == true and eviction must run.
+        var seeded = 0
+        repeat {
+            for _ in 0..<150 {
+                let s = try await sessions.start(routineID: nil, type: .lift)
+                for k in 1...5 {
+                    try await sets.append(SessionSet(
+                        id: 0, clientUUID: UUID(),
+                        sessionID: s.id, exerciseID: exerciseID,
+                        exerciseOrder: 1, setNumber: k,
+                        setType: .working, weightKg: 80.0, reps: 5,
+                        durationSecs: nil, distanceM: nil,
+                        rpe: 8.0, completedAt: Date(), notes: nil, updatedAt: Date()
+                    ))
+                }
+                try await sessions.finish(id: s.clientUUID)
+            }
+            seeded += 150
+        } while try await db.read({ try guard1.logicalSizeBytes($0) }) <= 1_048_576 && seeded < 4500
+
+        // Open Settings (loads maxDataMb = 5), then drive the decrease-to-1 + confirm path.
+        let vm = await MainActor.run { SettingsViewModel(dbManager: db) }
+        await vm.load()
+        await vm.handleMaxDataChange(to: 1)
+        let confirmShown = await MainActor.run { vm.showLimitDecreaseConfirm }
+        XCTAssertTrue(confirmShown, "Precondition: decreasing 5 → 1 over-limit must raise the confirm dialog")
+
+        await MainActor.run { vm.maxDataMb = 1 }   // picker moved to 1
+        await vm.confirmLimitDecrease()             // reconcile + vacuum + refreshFooter
+
+        // Footer size must equal the logical size and sit within the 1 MB limit —
+        // the on-disk file size would be well above 1 MB here (unreclaimed slack).
+        let footerBytes = await MainActor.run { vm.dbSizeBytes }
+        let logical = try await db.read { try guard1.logicalSizeBytes($0) }
+        XCTAssertEqual(footerBytes, logical,
+            "Footer size must be the logical (enforced) size, not the on-disk file size")
+        XCTAssertLessThanOrEqual(footerBytes, 1_048_576,
+            "After eviction to a 1 MB limit, the footer must report ≤ 1 MB")
+    }
+
     // MARK: - Bug #1 reproduction test
 
     func testHomeCountSurvivesSettingsRoundTrip() async throws {
