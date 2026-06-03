@@ -2,22 +2,34 @@ import SwiftUI
 
 struct RootView: View {
     @State private var router = Router()
+    // Owned in @State so it survives RootView body re-evaluations (every push/pop
+    // mutates router.path, which re-runs body). Building it inline here would mint a
+    // fresh HomeViewModel with stats == nil on every navigation, dropping the loaded
+    // Home metrics. See .pipeline/debug-bug1.md.
+    @State private var homeViewModel: HomeViewModel?
     @Environment(\.databaseManager) private var dbManager
 
     var body: some View {
         NavigationStack(path: $router.path) {
-            if let db = dbManager {
-                HomeView(viewModel: HomeViewModel(dbManager: db))
-                    .navigationDestination(for: Route.self) { route in
-                        routeView(route)
-                    }
-            } else {
-                Text("Database unavailable")
-                    .foregroundStyle(AppColor.textSecondary)
+            Group {
+                if let vm = homeViewModel {
+                    HomeView(viewModel: vm)
+                        .navigationDestination(for: Route.self) { route in
+                            routeView(route)
+                        }
+                } else if dbManager == nil {
+                    Text("Database unavailable")
+                        .foregroundStyle(AppColor.textSecondary)
+                }
             }
         }
         .environment(\.router, router)
         .background(AppColor.background)
+        .onAppear {
+            if homeViewModel == nil, let db = dbManager {
+                homeViewModel = HomeViewModel(dbManager: db)
+            }
+        }
     }
 
     @ViewBuilder
