@@ -33,3 +33,6 @@ Hybrid.xcodeproj/
 
 # pipeline cluade stuff
 .pipeline
+
+# Local build/test scratch (project-local TMPDIR for xcodebuild)
+.buildtmp/
