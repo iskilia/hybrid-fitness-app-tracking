@@ -5,6 +5,7 @@ struct SetRow: View {
     let setIndex: Int
     let prevDisplay: String?
     let metricType: MetricType
+    let distanceUnit: DistanceUnit
     @Bindable var row: SetRowState
     let onCommit: () -> Void
 
@@ -27,6 +28,15 @@ struct SetRow: View {
                 TextField("Seconds", text: $row.durationSecsText)
                     .font(AppFont.captionMono)
                     .keyboardType(.numberPad)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .onSubmit { onCommit() }
+            } else if metricType == .distance {
+                // Distance field in user's unit (KM or MI)
+                let placeholder = distanceUnit == .km ? "KM" : "MI"
+                TextField(placeholder, text: $row.distanceText)
+                    .font(AppFont.captionMono)
+                    .keyboardType(.decimalPad)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
                     .onSubmit { onCommit() }

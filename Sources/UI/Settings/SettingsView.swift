@@ -12,9 +12,6 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: AppSpacing.xl) {
                 unitsSection
                 dataLimitSection
-                #if DEBUG
-                debugSection   // TEMP PASS-2 TESTING — TODO(pass-4): remove once Pass 4 ships.
-                #endif
                 footer
             }
             .padding(AppSpacing.lg)
@@ -105,52 +102,9 @@ struct SettingsView: View {
         }
     }
 
-    // TEMP PASS-2 TESTING — small options let the limit drop below seeded data.
-    // TODO(pass-4): drop the [1, 2, 5] branch, return to the 10–200 production range.
     private var limitOptions: [Int] {
-        #if DEBUG
-        return [1, 2, 5] + Array(stride(from: 10, through: 200, by: 10))
-        #else
-        return Array(stride(from: 10, through: 200, by: 10))
-        #endif
+        Array(stride(from: 10, through: 200, by: 10))
     }
-
-    #if DEBUG
-    // TEMP PASS-2 TESTING — remove before merge.
-    private var debugSection: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.sm) {
-            Text("DEBUG · STORAGE TEST")
-                .font(AppFont.headline)
-                .foregroundStyle(AppColor.textSecondary)
-
-            Text(String(format: "Logical size: %.2f MB  ·  limit: %d MB",
-                        viewModel.debugLogicalMB, viewModel.maxDataMb))
-                .font(AppFont.caption)
-                .foregroundStyle(AppColor.textSecondary)
-
-            HStack {
-                Button("Seed 200") { Task { await viewModel.debugSeed(200) } }
-                Spacer()
-                Button("Seed 1000") { Task { await viewModel.debugSeed(1000) } }
-                Spacer()
-                Button("Refresh size") { Task { await viewModel.debugRefreshLogical() } }
-            }
-            .font(AppFont.body)
-            .disabled(viewModel.debugBusy)
-
-            if viewModel.debugBusy {
-                Text("Seeding…").font(AppFont.caption).foregroundStyle(AppColor.accent)
-            }
-            Text("Seed ~1000 to pass 1 MB, set limit to 1 MB, then finish a session / lower the limit / add an exercise to trigger eviction.")
-                .font(AppFont.caption)
-                .foregroundStyle(AppColor.textSecondary)
-        }
-        .padding(AppSpacing.lg)
-        .background(AppColor.surface)
-        .clipShape(RoundedRectangle(cornerRadius: AppRadius.lg))
-        .task { await viewModel.debugRefreshLogical() }
-    }
-    #endif
 
     private var footer: some View {
         VStack(spacing: AppSpacing.sm) {

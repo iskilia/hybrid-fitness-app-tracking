@@ -56,7 +56,7 @@ struct RoutinesView: View {
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
             Button {
-                router?.push(.routineDetail(UUID(), .lift))
+                router?.push(.routineBuilder)
             } label: {
                 Image(systemName: "plus")
                     .foregroundStyle(AppColor.textPrimary)

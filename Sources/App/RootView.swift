@@ -52,6 +52,10 @@ struct RootView: View {
                     RunRoutineDetailView(routineID: id, dbManager: db)
                 }
             }
+        case .routineBuilder:
+            if let db = dbManager {
+                RoutineBuilderView(dbManager: db)
+            }
         case .session(let id):
             // Dispatch to lift or run based on session type.
             // TODO: run-coder — replace the Text placeholder below with RunActiveSessionView(sessionID: id)

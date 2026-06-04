@@ -93,9 +93,6 @@ final class SettingsViewModel {
     private func refreshFooter() async {
         sessionCount = (try? await countSessions()) ?? sessionCount
         dbSizeBytes = await logicalSizeBytes()
-        #if DEBUG
-        await debugRefreshLogical()   // TEMP PASS-2 TESTING — keep live readout in sync after eviction.
-        #endif
     }
 
     private func countSessions() async throws -> Int {
@@ -114,44 +111,4 @@ final class SettingsViewModel {
         (try? await dbManager.read { try storageGuard.logicalSizeBytes($0) }) ?? 0
     }
 
-    // MARK: - TEMP PASS-2 TESTING — TODO(pass-4): remove this whole harness once Pass 4 ships.
-    #if DEBUG
-    var debugBusy = false
-    var debugLogicalMB: Double = 0
-
-    /// Live logical size = (page_count − freelist_count) × page_size — the measure the
-    /// storage engine actually enforces against (NOT the on-disk .sqlite footer above).
-    func debugRefreshLogical() async {
-        let bytes = (try? await dbManager.read { db in try self.storageGuard.logicalSizeBytes(db) }) ?? 0
-        debugLogicalMB = Double(bytes) / (1024.0 * 1024.0)
-    }
-
-    /// Bulk-inserts `n` finished LIFT sessions (5 sets each, ~1 KB/session) so the DB can be
-    /// pushed past a small limit by hand. ~900 sessions ≈ 1 MB.
-    func debugSeed(_ n: Int) async {
-        debugBusy = true
-        let sessions = SessionRepository(dbManager: dbManager)
-        let sets = SessionSetRepository(dbManager: dbManager)
-        let exID = (try? await dbManager.read { db -> Int in
-            let s = try prepare(db, "SELECT id FROM exercise WHERE is_custom = 0 LIMIT 1;")
-            defer { finalize(s) }
-            guard try step(s) else { return 1 }
-            return Int(sqlite3_column_int64(s, 0))
-        }) ?? 1
-        for _ in 0..<n {
-            guard let ses = try? await sessions.start(routineID: nil, type: .lift) else { continue }
-            for k in 1...5 {
-                try? await sets.append(SessionSet(
-                    id: 0, clientUUID: UUID(), sessionID: ses.id, exerciseID: exID,
-                    exerciseOrder: 1, setNumber: k, setType: .working, weightKg: 80, reps: 5,
-                    durationSecs: nil, distanceM: nil, rpe: 8, completedAt: Date(),
-                    notes: nil, updatedAt: Date()))
-            }
-            try? await sessions.finish(id: ses.clientUUID)
-        }
-        await load()
-        await debugRefreshLogical()
-        debugBusy = false
-    }
-    #endif
 }

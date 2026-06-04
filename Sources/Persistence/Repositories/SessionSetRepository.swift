@@ -266,6 +266,16 @@ struct SessionSetRepository {
             if set.durationSecs != nil {
                 throw DatabaseError.conflict("\(raw) exercise must not have duration_secs")
             }
+        case "DISTANCE":
+            if set.distanceM == nil {
+                throw DatabaseError.conflict("DISTANCE exercise requires distance_m")
+            }
+            if set.reps != nil {
+                throw DatabaseError.conflict("DISTANCE exercise must not have reps")
+            }
+            if set.durationSecs != nil {
+                throw DatabaseError.conflict("DISTANCE exercise must not have duration_secs")
+            }
         default:
             break
         }
@@ -283,6 +293,8 @@ struct SessionSetRepository {
                 orderClause = "ss.duration_secs DESC NULLS LAST"
             case "REPS", "REPS_BODYWEIGHT":
                 orderClause = "ss.weight_kg DESC NULLS LAST, ss.reps DESC NULLS LAST"
+            case "DISTANCE":
+                orderClause = "ss.distance_m DESC NULLS LAST"
             default:
                 return nil
             }
