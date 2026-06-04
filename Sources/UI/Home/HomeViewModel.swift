@@ -54,6 +54,7 @@ final class HomeViewModel {
             self.summaries = sumMap
         } catch {
             // Leave previous state on error
+            print("HomeViewModel.load error: \(error)")
         }
     }
 

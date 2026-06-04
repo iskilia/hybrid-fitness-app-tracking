@@ -163,6 +163,7 @@ struct SessionRepository {
             let countSQL = """
                 SELECT COUNT(*) FROM session
                 WHERE deleted_at IS NULL
+                  AND status = 'COMPLETED'
                   AND started_at >= ? AND started_at < ?;
                 """
             let countStmt = try prepare(db, countSQL)
@@ -178,6 +179,7 @@ struct SessionRepository {
                 FROM session_set ss
                 JOIN session s ON s.id = ss.session_id
                 WHERE s.deleted_at IS NULL
+                  AND s.status = 'COMPLETED'
                   AND s.started_at >= ? AND s.started_at < ?
                   AND ss.weight_kg IS NOT NULL AND ss.reps IS NOT NULL;
                 """
@@ -194,6 +196,7 @@ struct SessionRepository {
                 FROM session_run sr
                 JOIN session s ON s.id = sr.session_id
                 WHERE s.deleted_at IS NULL
+                  AND s.status = 'COMPLETED'
                   AND s.started_at >= ? AND s.started_at < ?
                   AND sr.actual_distance_km IS NOT NULL;
                 """

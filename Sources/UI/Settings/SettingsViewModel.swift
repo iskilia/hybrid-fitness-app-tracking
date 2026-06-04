@@ -38,7 +38,7 @@ final class SettingsViewModel {
                 previousMaxDataMb = p.maxDataMb
             }
             sessionCount = try await countSessions()
-            dbSizeBytes = dbFileSize()
+            dbSizeBytes = await logicalSizeBytes()
         } catch {
             sessionCount = 0
         }
@@ -92,7 +92,7 @@ final class SettingsViewModel {
 
     private func refreshFooter() async {
         sessionCount = (try? await countSessions()) ?? sessionCount
-        dbSizeBytes = dbFileSize()
+        dbSizeBytes = await logicalSizeBytes()
         #if DEBUG
         await debugRefreshLogical()   // TEMP PASS-2 TESTING — keep live readout in sync after eviction.
         #endif
@@ -107,14 +107,11 @@ final class SettingsViewModel {
         }
     }
 
-    private func dbFileSize() -> Int64 {
-        guard let dir = try? FileManager.default.url(
-            for: .documentDirectory, in: .userDomainMask,
-            appropriateFor: nil, create: false)
-        else { return 0 }
-        let url = dir.appendingPathComponent("Hybrid.sqlite")
-        let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
-        return (attrs?[.size] as? NSNumber)?.int64Value ?? 0
+    /// Logical size the storage limit is enforced against:
+    /// (page_count − freelist_count) × page_size. NOT the on-disk .sqlite file size,
+    /// which keeps freed pages as unreclaimed slack after eviction.
+    private func logicalSizeBytes() async -> Int64 {
+        (try? await dbManager.read { try storageGuard.logicalSizeBytes($0) }) ?? 0
     }
 
     // MARK: - TEMP PASS-2 TESTING — TODO(pass-4): remove this whole harness once Pass 4 ships.
