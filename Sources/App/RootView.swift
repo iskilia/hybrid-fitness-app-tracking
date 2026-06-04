@@ -5,7 +5,7 @@ struct RootView: View {
     // Owned in @State so it survives RootView body re-evaluations (every push/pop
     // mutates router.path, which re-runs body). Building it inline here would mint a
     // fresh HomeViewModel with stats == nil on every navigation, dropping the loaded
-    // Home metrics. See .pipeline/debug-bug1.md.
+    // Home metrics.
     @State private var homeViewModel: HomeViewModel?
     @Environment(\.databaseManager) private var dbManager
 
