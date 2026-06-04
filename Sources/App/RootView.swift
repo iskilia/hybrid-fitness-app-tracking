@@ -10,21 +10,24 @@ struct RootView: View {
     @Environment(\.databaseManager) private var dbManager
 
     var body: some View {
-        NavigationStack(path: $router.path) {
-            Group {
-                if let vm = homeViewModel {
-                    HomeView(viewModel: vm)
-                        .navigationDestination(for: Route.self) { route in
-                            routeView(route)
-                        }
-                } else if dbManager == nil {
-                    Text("Database unavailable")
-                        .foregroundStyle(AppColor.textSecondary)
+        ZStack {
+            AppColor.background.ignoresSafeArea()
+            NavigationStack(path: $router.path) {
+                Group {
+                    if let vm = homeViewModel {
+                        HomeView(viewModel: vm)
+                            .navigationDestination(for: Route.self) { route in
+                                routeView(route)
+                            }
+                    } else if dbManager == nil {
+                        Text("Database unavailable")
+                            .foregroundStyle(AppColor.textSecondary)
+                    }
                 }
             }
+            .background(AppColor.background)
         }
         .environment(\.router, router)
-        .background(AppColor.background)
         .onAppear {
             if homeViewModel == nil, let db = dbManager {
                 homeViewModel = HomeViewModel(dbManager: db)
@@ -65,10 +68,6 @@ struct RootView: View {
         case .exerciseLibrary:
             if let db = dbManager {
                 ExerciseLibraryView(dbManager: db, onSelect: { _ in })
-            }
-        case .runTypes:
-            if let db = dbManager {
-                RunTypesView(dbManager: db) { _ in }
             }
         case .exerciseHistory(let id):
             if let db = dbManager {

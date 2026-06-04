@@ -46,6 +46,43 @@ final class RunRoutineDetailViewModel {
         }
     }
 
+    // MARK: - Add run
+
+    func addRun(_ template: RunTemplate, routineID: UUID) async {
+        guard let r = routine else { return }
+        let now = Date()
+        let newRun = RoutineRun(
+            id: 0,
+            clientUUID: UUID(),
+            routineID: r.id,
+            runTemplateID: template.id,
+            sortOrder: entries.count + 1,
+            notes: nil,
+            updatedAt: now
+        )
+        do {
+            try await dbManager.transaction { db in
+                let sql = """
+                    INSERT INTO routine_run
+                        (client_uuid, routine_id, run_template_id, sort_order, notes, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?);
+                    """
+                let stmt = try prepare(db, sql)
+                defer { finalize(stmt) }
+                bindUUID(stmt, 1, newRun.clientUUID)
+                bindInt(stmt, 2, newRun.routineID)
+                bindInt(stmt, 3, newRun.runTemplateID)
+                bindInt(stmt, 4, newRun.sortOrder)
+                bindText(stmt, 5, newRun.notes)
+                bindDate(stmt, 6, newRun.updatedAt)
+                _ = try step(stmt)
+            }
+            await load(routineID: routineID)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     // MARK: - Start session
 
     func startSession(routineID: UUID) async -> UUID? {

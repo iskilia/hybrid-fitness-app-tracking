@@ -5,7 +5,7 @@ import SwiftUI
 struct RunTypesView: View {
     @State private var viewModel: RunTypesViewModel
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.router) private var router
+    @State private var showCustomEditor = false
     let onSelect: (RunTemplate) -> Void
 
     init(dbManager: DatabaseManager, onSelect: @escaping (RunTemplate) -> Void) {
@@ -14,22 +14,23 @@ struct RunTypesView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                searchBar
-                    .padding(.horizontal, AppSpacing.lg)
-                    .padding(.top, AppSpacing.md)
-                typeFilterChips
-                    .padding(.horizontal, AppSpacing.lg)
-                    .padding(.vertical, AppSpacing.sm)
-                Divider().foregroundStyle(AppColor.divider)
-                templateList
-            }
-            .background(AppColor.background)
-            .navigationTitle("RUN TYPES")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { toolbarContent }
-            .task { await viewModel.load() }
+        VStack(spacing: 0) {
+            searchBar
+                .padding(.horizontal, AppSpacing.lg)
+                .padding(.top, AppSpacing.md)
+            typeFilterChips
+                .padding(.horizontal, AppSpacing.lg)
+                .padding(.vertical, AppSpacing.sm)
+            Divider().foregroundStyle(AppColor.divider)
+            templateList
+        }
+        .background(AppColor.background)
+        .navigationTitle("RUN TYPES")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { toolbarContent }
+        .task { await viewModel.load() }
+        .sheet(isPresented: $showCustomEditor) {
+            CustomRunTemplateEditorView(dbManager: viewModel.dbManager)
         }
     }
 
@@ -98,7 +99,7 @@ struct RunTypesView: View {
 
     private var addCustomButton: some View {
         Button {
-            router?.push(.runTypes)
+            showCustomEditor = true
         } label: {
             Text("+ ADD CUSTOM RUN TYPE")
                 .font(AppFont.headline)
@@ -122,7 +123,7 @@ struct RunTypesView: View {
         }
         ToolbarItem(placement: .topBarTrailing) {
             Button {
-                router?.push(.runTypes)
+                showCustomEditor = true
             } label: {
                 Label("NEW", systemImage: "plus")
                     .font(AppFont.headline)

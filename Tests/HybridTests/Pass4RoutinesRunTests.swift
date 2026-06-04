@@ -572,6 +572,321 @@ final class Pass4RoutinesRunTests: XCTestCase {
         XCTAssertFalse(options.contains(2), "Production limitOptions must not contain debug value 2")
         XCTAssertFalse(options.contains(5), "Production limitOptions must not contain debug value 5")
     }
+
+    // MARK: - Pass 4 Extension: Builder run/mixed type derivation (item 3)
+
+    /// Helper: fetch the first seeded (non-custom) RunTemplate.
+    private func anyRunTemplate(_ db: DatabaseManager) async throws -> RunTemplate {
+        let repo = RunTemplateRepository(dbManager: db)
+        let all = try await repo.listAll()
+        guard let tmpl = all.first(where: { !$0.isCustom }) else {
+            throw DatabaseError.notFound
+        }
+        return tmpl
+    }
+
+    // MARK: isValid — new run-only and both-empty cases
+
+    func testBuilderIsValidFalseWhenBothEntriesAndRunEntriesEmpty() async throws {
+        let db = try makeTempDB()
+        let vm = await MainActor.run { RoutineBuilderViewModel(dbManager: db) }
+        await vm.load()
+        await MainActor.run { vm.name = "Has Name But No Entries" }
+        let isValid = await MainActor.run { vm.isValid }
+        XCTAssertFalse(isValid,
+            "isValid must be false when both entries and runEntries are empty (name alone is not enough)")
+    }
+
+    func testBuilderIsValidTrueWithNameAndRunOnly() async throws {
+        let db = try makeTempDB()
+        let template = try await anyRunTemplate(db)
+        let vm = await MainActor.run { RoutineBuilderViewModel(dbManager: db) }
+        await vm.load()
+        await MainActor.run {
+            vm.name = "Run Only Routine"
+            vm.addRun(template)
+        }
+        let isValid = await MainActor.run { vm.isValid }
+        XCTAssertTrue(isValid,
+            "isValid must be true when name is non-empty and runEntries has ≥1 entry (no exercises)")
+    }
+
+    func testBuilderIsValidTrueWithNameAndExerciseOnly() async throws {
+        let db = try makeTempDB()
+        let exerciseID = try await anyExerciseID(db)
+        let exercise = try await makeExercise(id: exerciseID, db: db)
+        let vm = await MainActor.run { RoutineBuilderViewModel(dbManager: db) }
+        await vm.load()
+        await MainActor.run {
+            vm.name = "Exercise Only Routine"
+            vm.add(exercise)
+        }
+        let isValid = await MainActor.run { vm.isValid }
+        XCTAssertTrue(isValid,
+            "isValid must be true when name is non-empty and entries has ≥1 exercise (no runs)")
+    }
+
+    // MARK: derivedType — lift / run / mixed
+
+    func testDerivedTypeIsLiftWhenExercisesOnlyNoRuns() async throws {
+        let db = try makeTempDB()
+        let exerciseID = try await anyExerciseID(db)
+        let exercise = try await makeExercise(id: exerciseID, db: db)
+        let vm = await MainActor.run { RoutineBuilderViewModel(dbManager: db) }
+        await vm.load()
+        await MainActor.run { vm.add(exercise) }
+        let derived = await MainActor.run { vm.derivedType }
+        XCTAssertEqual(derived, .lift,
+            "derivedType must be .lift when runEntries is empty (exercises-only)")
+    }
+
+    func testDerivedTypeIsRunWhenRunsOnlyNoExercises() async throws {
+        let db = try makeTempDB()
+        let template = try await anyRunTemplate(db)
+        let vm = await MainActor.run { RoutineBuilderViewModel(dbManager: db) }
+        await vm.load()
+        await MainActor.run { vm.addRun(template) }
+        let derived = await MainActor.run { vm.derivedType }
+        XCTAssertEqual(derived, .run,
+            "derivedType must be .run when entries is empty (runs-only)")
+    }
+
+    func testDerivedTypeIsMixedWhenBothExercisesAndRuns() async throws {
+        let db = try makeTempDB()
+        let exerciseID = try await anyExerciseID(db)
+        let exercise = try await makeExercise(id: exerciseID, db: db)
+        let template = try await anyRunTemplate(db)
+        let vm = await MainActor.run { RoutineBuilderViewModel(dbManager: db) }
+        await vm.load()
+        await MainActor.run {
+            vm.add(exercise)
+            vm.addRun(template)
+        }
+        let derived = await MainActor.run { vm.derivedType }
+        XCTAssertEqual(derived, .mixed,
+            "derivedType must be .mixed when both entries and runEntries are non-empty")
+    }
+
+    // MARK: create() with run / mixed type — DB assertions
+
+    func testBuilderCreateRunRoutinePersistsTypeRunAndRunRowFKCorrect() async throws {
+        let db = try makeTempDB()
+        let routineRepo = RoutineRepository(dbManager: db)
+        let template = try await anyRunTemplate(db)
+
+        let vm = await MainActor.run { RoutineBuilderViewModel(dbManager: db) }
+        await vm.load()
+        await MainActor.run {
+            vm.name = "Run Only Test"
+            vm.addRun(template)
+        }
+        await vm.create()
+
+        let didCreate = await MainActor.run { vm.didCreate }
+        XCTAssertTrue(didCreate, "didCreate must be true after creating a run-only routine")
+
+        let routines = try await routineRepo.list()
+        let created = try XCTUnwrap(routines.first { $0.name == "Run Only Test" },
+            "Routine 'Run Only Test' must appear in list()")
+
+        XCTAssertEqual(created.type, .run,
+            "Routine type must be .run for a runs-only build")
+
+        let summary = try await routineRepo.summary(routineID: created.clientUUID)
+        XCTAssertEqual(summary.runCount, 1,
+            "summary.runCount must equal 1 after adding one run template")
+        XCTAssertEqual(summary.exerciseCount, 0,
+            "summary.exerciseCount must be 0 for a run-only routine")
+
+        // Verify routine_run FK: routine_id must be the real int PK, not 0
+        let routineRunRows = try await db.read { handle -> [(id: Int, routineID: Int, runTemplateID: Int)] in
+            let stmt = try Hybrid.prepare(handle,
+                "SELECT id, routine_id, run_template_id FROM routine_run WHERE routine_id = ?;")
+            defer { Hybrid.finalize(stmt) }
+            Hybrid.bindInt(stmt, 1, created.id)
+            var rows: [(id: Int, routineID: Int, runTemplateID: Int)] = []
+            while try Hybrid.step(stmt) {
+                rows.append((
+                    id: Int(sqlite3_column_int64(stmt, 0)),
+                    routineID: Int(sqlite3_column_int64(stmt, 1)),
+                    runTemplateID: Int(sqlite3_column_int64(stmt, 2))
+                ))
+            }
+            return rows
+        }
+        XCTAssertEqual(routineRunRows.count, 1, "One routine_run row must be inserted")
+        let runRow = try XCTUnwrap(routineRunRows.first)
+        XCTAssertGreaterThan(runRow.routineID, 0,
+            "routine_run.routine_id must be the real integer PK (not 0)")
+        XCTAssertEqual(runRow.routineID, created.id,
+            "routine_run.routine_id must match the created routine's integer id")
+        XCTAssertEqual(runRow.runTemplateID, template.id,
+            "routine_run.run_template_id must match the chosen template")
+    }
+
+    func testBuilderCreateMixedRoutinePersistsTypeMixed() async throws {
+        let db = try makeTempDB()
+        let routineRepo = RoutineRepository(dbManager: db)
+        let exerciseID = try await anyExerciseID(db)
+        let exercise = try await makeExercise(id: exerciseID, db: db)
+        let template = try await anyRunTemplate(db)
+
+        let vm = await MainActor.run { RoutineBuilderViewModel(dbManager: db) }
+        await vm.load()
+        await MainActor.run {
+            vm.name = "Mixed Test Routine"
+            vm.add(exercise)
+            vm.addRun(template)
+        }
+        await vm.create()
+
+        let didCreate = await MainActor.run { vm.didCreate }
+        XCTAssertTrue(didCreate, "didCreate must be true after creating a mixed routine")
+
+        let routines = try await routineRepo.list()
+        let created = try XCTUnwrap(routines.first { $0.name == "Mixed Test Routine" },
+            "Routine 'Mixed Test Routine' must appear in list()")
+
+        XCTAssertEqual(created.type, .mixed,
+            "Routine type must be .mixed for a build with both exercises and runs")
+
+        let summary = try await routineRepo.summary(routineID: created.clientUUID)
+        XCTAssertEqual(summary.exerciseCount, 1,
+            "summary.exerciseCount must be 1 for the mixed routine")
+        XCTAssertEqual(summary.runCount, 1,
+            "summary.runCount must be 1 for the mixed routine")
+
+        // Verify the run row FK
+        let routineRunRows = try await db.read { handle -> [Int] in
+            let stmt = try Hybrid.prepare(handle,
+                "SELECT routine_id FROM routine_run WHERE routine_id = ?;")
+            defer { Hybrid.finalize(stmt) }
+            Hybrid.bindInt(stmt, 1, created.id)
+            var ids: [Int] = []
+            while try Hybrid.step(stmt) {
+                ids.append(Int(sqlite3_column_int64(stmt, 0)))
+            }
+            return ids
+        }
+        XCTAssertEqual(routineRunRows.count, 1)
+        XCTAssertGreaterThan(routineRunRows[0], 0,
+            "routine_run.routine_id must be the real integer PK (not 0) in a mixed routine")
+    }
+
+    func testBuilderCreateLiftRoutineRegressionNoRunRows() async throws {
+        // Regression: exercises-only builder must still produce type .lift and no routine_run rows.
+        let db = try makeTempDB()
+        let routineRepo = RoutineRepository(dbManager: db)
+        let exerciseID = try await anyExerciseID(db)
+        let exercise = try await makeExercise(id: exerciseID, db: db)
+
+        let vm = await MainActor.run { RoutineBuilderViewModel(dbManager: db) }
+        await vm.load()
+        await MainActor.run {
+            vm.name = "Lift Regression"
+            vm.add(exercise)
+        }
+        await vm.create()
+
+        let didCreate = await MainActor.run { vm.didCreate }
+        XCTAssertTrue(didCreate)
+
+        let routines = try await routineRepo.list()
+        let created = try XCTUnwrap(routines.first { $0.name == "Lift Regression" })
+        XCTAssertEqual(created.type, .lift,
+            "Exercises-only build must still produce type .lift")
+
+        let summary = try await routineRepo.summary(routineID: created.clientUUID)
+        XCTAssertEqual(summary.runCount, 0,
+            "summary.runCount must be 0 for a lift-only routine")
+    }
+
+    // MARK: - Pass 4 Extension: RunRoutineDetailViewModel.addRun (item 7 add path)
+
+    func testAddRunInsertsRoutineRunRowAndRefreshesEntries() async throws {
+        let db = try makeTempDB()
+        let routineRepo = RoutineRepository(dbManager: db)
+        let template = try await anyRunTemplate(db)
+
+        // Create a run-only routine to load into the VM
+        let now = Date()
+        let routine = Routine(
+            id: 0, clientUUID: UUID(), name: "Tempo Tuesday Test",
+            type: .run, sortOrder: 0,
+            createdAt: now, updatedAt: now, deletedAt: nil
+        )
+        let runRow = RoutineRun(
+            id: 0, clientUUID: UUID(),
+            routineID: 0,
+            runTemplateID: template.id,
+            sortOrder: 1, notes: nil, updatedAt: now
+        )
+        try await routineRepo.create(routine, exerciseEntries: [], runEntries: [runRow])
+
+        let routines = try await routineRepo.list()
+        let created = try XCTUnwrap(routines.first { $0.name == "Tempo Tuesday Test" })
+
+        // Load the VM with the created routine
+        let vm = await MainActor.run { RunRoutineDetailViewModel(dbManager: db) }
+        await vm.load(routineID: created.clientUUID)
+
+        let initialCount = await MainActor.run { vm.entries.count }
+        XCTAssertEqual(initialCount, 1, "Precondition: routine should start with 1 run entry")
+
+        // Fetch a second template to add (any seeded template works; re-use same is also fine)
+        let template2 = try await anyRunTemplate(db)
+        await vm.addRun(template2, routineID: created.clientUUID)
+
+        let afterCount = await MainActor.run { vm.entries.count }
+        XCTAssertEqual(afterCount, 2,
+            "entries.count must grow by 1 after addRun(_:routineID:)")
+
+        // Verify the new routine_run row has the correct FK
+        let summary = try await routineRepo.summary(routineID: created.clientUUID)
+        XCTAssertEqual(summary.runCount, 2,
+            "summary.runCount must be 2 after addRun inserts a second row")
+
+        // Verify the inserted row has the correct routine_id (non-zero, matching the real PK)
+        let allRunRows = try await db.read { handle -> [(routineID: Int, runTemplateID: Int)] in
+            let stmt = try Hybrid.prepare(handle,
+                "SELECT routine_id, run_template_id FROM routine_run WHERE routine_id = ? ORDER BY sort_order ASC;")
+            defer { Hybrid.finalize(stmt) }
+            Hybrid.bindInt(stmt, 1, created.id)
+            var rows: [(routineID: Int, runTemplateID: Int)] = []
+            while try Hybrid.step(stmt) {
+                rows.append((
+                    routineID: Int(sqlite3_column_int64(stmt, 0)),
+                    runTemplateID: Int(sqlite3_column_int64(stmt, 1))
+                ))
+            }
+            return rows
+        }
+        XCTAssertEqual(allRunRows.count, 2, "Two routine_run rows must exist after addRun")
+        for row in allRunRows {
+            XCTAssertGreaterThan(row.routineID, 0,
+                "routine_run.routine_id must be the real integer PK, not 0")
+            XCTAssertEqual(row.routineID, created.id,
+                "routine_run.routine_id must match the created routine's integer id")
+        }
+        // The newly added row's run_template_id must match the template we passed
+        let newRow = try XCTUnwrap(allRunRows.last)
+        XCTAssertEqual(newRow.runTemplateID, template2.id,
+            "routine_run.run_template_id must match the template passed to addRun")
+    }
+
+    func testAddRunDoesNothingWhenRoutineNotLoaded() async throws {
+        // addRun must guard on routine != nil and be a no-op when the VM hasn't loaded
+        let db = try makeTempDB()
+        let template = try await anyRunTemplate(db)
+
+        let vm = await MainActor.run { RunRoutineDetailViewModel(dbManager: db) }
+        // Deliberately do NOT call load() — routine is nil
+        await vm.addRun(template, routineID: UUID())
+
+        let entryCount = await MainActor.run { vm.entries.count }
+        XCTAssertEqual(entryCount, 0,
+            "addRun must not crash and must leave entries empty when routine is not loaded")
+    }
 }
 
 // MARK: - XCTUnwrap overload for Optional with message (convenience)

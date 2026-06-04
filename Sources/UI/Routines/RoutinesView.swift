@@ -25,7 +25,7 @@ struct RoutinesView: View {
             Text("Your")
                 .font(AppFont.displayMedium)
                 .foregroundStyle(AppColor.textPrimary)
-            Text("plans.")
+            Text("routines.")
                 .font(AppFont.displayMedium)
                 .foregroundStyle(AppColor.accent)
 

@@ -12,7 +12,6 @@ enum Route: Hashable, Sendable {
     case routineBuilder
     case session(UUID)
     case exerciseLibrary
-    case runTypes
     case exerciseHistory(UUID)
     case settings
 }

@@ -3,6 +3,7 @@ import SwiftUI
 struct RoutineBuilderView: View {
     @State private var viewModel: RoutineBuilderViewModel
     @State private var showExerciseLibrary = false
+    @State private var showRunPicker = false
     @Environment(\.router) private var router
 
     init(dbManager: DatabaseManager) {
@@ -15,6 +16,9 @@ struct RoutineBuilderView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     headerSection
                     exerciseListSection
+                    runListSection
+                    addRunButton
+                        .padding(AppSpacing.lg)
                 }
                 .padding(.bottom, 100)
             }
@@ -30,6 +34,14 @@ struct RoutineBuilderView: View {
                 viewModel.add(exercise)
                 showExerciseLibrary = false
             })
+        }
+        .sheet(isPresented: $showRunPicker) {
+            NavigationStack {
+                RunTypesView(dbManager: viewModel.dbManager) { template in
+                    viewModel.addRun(template)
+                    showRunPicker = false
+                }
+            }
         }
         .confirmationDialog(
             "This will delete your oldest history. Continue?",
@@ -60,11 +72,17 @@ private extension RoutineBuilderView {
     var headerSection: some View {
         VStack(alignment: .leading, spacing: AppSpacing.sm) {
             HStack(spacing: AppSpacing.md) {
-                BadgeView(kind: .lift)
+                BadgeView(kind: viewModel.derivedType)
                 Text("\(viewModel.entries.count) EXERCISES")
                     .font(AppFont.caption)
                     .foregroundStyle(AppColor.textSecondary)
                     .textCase(.uppercase)
+                if !viewModel.runEntries.isEmpty {
+                    Text("\(viewModel.runEntries.count) RUNS")
+                        .font(AppFont.caption)
+                        .foregroundStyle(AppColor.textSecondary)
+                        .textCase(.uppercase)
+                }
             }
             TextField("Routine name", text: $viewModel.name)
                 .font(AppFont.displayMedium)
@@ -88,6 +106,31 @@ private extension RoutineBuilderView {
                     .background(AppColor.divider)
                     .padding(.leading, AppSpacing.lg + 56 + AppSpacing.md)
             }
+        }
+    }
+
+    var runListSection: some View {
+        VStack(spacing: 0) {
+            ForEach(viewModel.runEntries) { template in
+                RunRow(template: template, intervals: [])
+                Divider()
+                    .background(AppColor.divider)
+                    .padding(.leading, AppSpacing.lg + 56 + AppSpacing.md)
+            }
+        }
+    }
+
+    var addRunButton: some View {
+        Button {
+            showRunPicker = true
+        } label: {
+            Label("ADD RUN", systemImage: "plus")
+                .font(AppFont.headline)
+                .foregroundStyle(AppColor.accent)
+                .frame(maxWidth: .infinity)
+                .padding(AppSpacing.lg)
+                .background(AppColor.surface)
+                .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
         }
     }
 

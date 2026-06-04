@@ -9,6 +9,7 @@ import SQLite3
 final class RoutineBuilderViewModel {
     var name: String = ""
     var entries: [Exercise] = []
+    var runEntries: [RunTemplate] = []
     var errorMessage: String?
     var didCreate = false
     var didCancel = false
@@ -37,8 +38,19 @@ final class RoutineBuilderViewModel {
         entries.append(exercise)
     }
 
+    func addRun(_ template: RunTemplate) {
+        runEntries.append(template)
+    }
+
     var isValid: Bool {
-        !name.trimmingCharacters(in: .whitespaces).isEmpty && !entries.isEmpty
+        !name.trimmingCharacters(in: .whitespaces).isEmpty
+            && !(entries.isEmpty && runEntries.isEmpty)
+    }
+
+    var derivedType: WorkoutType {
+        if entries.isEmpty { return .run }
+        if runEntries.isEmpty { return .lift }
+        return .mixed
     }
 
     func create() async {
@@ -48,7 +60,7 @@ final class RoutineBuilderViewModel {
             id: 0,
             clientUUID: UUID(),
             name: name.trimmingCharacters(in: .whitespaces),
-            type: .lift,
+            type: derivedType,
             sortOrder: 0,
             createdAt: now,
             updatedAt: now,
@@ -71,17 +83,28 @@ final class RoutineBuilderViewModel {
                 updatedAt: now
             )
         }
+        let runRows: [RoutineRun] = runEntries.enumerated().map { index, template in
+            RoutineRun(
+                id: 0,
+                clientUUID: UUID(),
+                routineID: 0,
+                runTemplateID: template.id,
+                sortOrder: index + 1,
+                notes: nil,
+                updatedAt: now
+            )
+        }
 
         let repo = routineRepo
         let insert: @Sendable (OpaquePointer) throws -> Void = { db in
-            try repo.insertRoutineWork(db, routine, exerciseEntries: exerciseEntries, runEntries: [])
+            try repo.insertRoutineWork(db, routine, exerciseEntries: exerciseEntries, runEntries: runRows)
         }
 
         do {
             let probe = try await storageGuard.probe(insert: insert, maxDataMb: maxDataMb)
             switch probe {
             case .fits:
-                try await routineRepo.create(routine, exerciseEntries: exerciseEntries, runEntries: [])
+                try await routineRepo.create(routine, exerciseEntries: exerciseEntries, runEntries: runRows)
                 didCreate = true
             case .needsEviction:
                 pendingInsert = insert
