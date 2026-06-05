@@ -20,22 +20,28 @@ struct MixedActiveSessionView: View {
                 ScrollView {
                     VStack(spacing: AppSpacing.sm) {
                         ForEach(Array(viewModel.blocks.enumerated()), id: \.element.id) { index, block in
-                            if block.kind == .lift, let exercise = block.exercise, let routineExercise = block.routineExercise {
-                                LiftBlockCard(
-                                    blockNumber: index + 1,
-                                    exercise: exercise,
-                                    routineExercise: routineExercise,
-                                    distanceUnit: viewModel.distanceUnit,
-                                    rows: block.rows,
-                                    prevDisplays: block.prevDisplays,
-                                    isExpanded: viewModel.activeBlockID == block.id,
-                                    isDone: block.isDone,
-                                    actions: .init(
-                                        onTap: { viewModel.expand(block) },
-                                        onMarkAllDone: { Task { await viewModel.markLiftBlockDone(block) } },
-                                        onNextBlock: { viewModel.advanceToNextBlock(after: block) }
+                            if block.kind == .lift {
+                                if let exercise = block.exercise, let routineExercise = block.routineExercise {
+                                    LiftBlockCard(
+                                        blockNumber: index + 1,
+                                        exercise: exercise,
+                                        routineExercise: routineExercise,
+                                        distanceUnit: viewModel.distanceUnit,
+                                        rows: block.rows,
+                                        prevDisplays: block.prevDisplays,
+                                        isExpanded: viewModel.activeBlockID == block.id,
+                                        isDone: block.isDone,
+                                        actions: .init(
+                                            onTap: { viewModel.expand(block) },
+                                            onMarkAllDone: { Task { await viewModel.markLiftBlockDone(block) } },
+                                            onNextBlock: { viewModel.advanceToNextBlock(after: block) }
+                                        )
                                     )
-                                )
+                                } else {
+                                    // load() only appends a .lift block when both resolve; enforce in debug.
+                                    let _ = assertionFailure("lift block missing exercise/routineExercise")
+                                    EmptyView()
+                                }
                             } else {
                                 BlockCard(
                                     block: block,

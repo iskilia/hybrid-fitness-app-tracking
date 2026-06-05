@@ -32,11 +32,11 @@ final class RunRoutineDetailViewModel {
             guard let r = routine else { return }
 
             let templateRepo = RunTemplateRepository(dbManager: dbManager)
-            let runEntries = try await fetchRoutineRuns(routineIntID: r.id)
+            let runEntries = try await routineRepo.runs(routineIntID: r.id)
+            let templatesByID = Dictionary(uniqueKeysWithValues: try await templateRepo.listAll().map { ($0.id, $0) })
             var built: [(run: RoutineRun, template: RunTemplate, intervals: [RunIntervalBlock])] = []
             for entry in runEntries {
-                let templates = try await templateRepo.listAll()
-                guard let tmpl = templates.first(where: { $0.id == entry.runTemplateID }) else { continue }
+                guard let tmpl = templatesByID[entry.runTemplateID] else { continue }
                 let blocks = try await templateRepo.intervals(for: tmpl.clientUUID)
                 built.append((run: entry, template: tmpl, intervals: blocks))
             }
@@ -235,35 +235,4 @@ final class RunRoutineDetailViewModel {
         }
     }
 
-    private func fetchRoutineRuns(routineIntID: Int) async throws -> [RoutineRun] {
-        try await dbManager.read { db in
-            let sql = """
-                SELECT id, client_uuid, routine_id, run_template_id, sort_order, notes, updated_at
-                FROM routine_run
-                WHERE routine_id = ?
-                ORDER BY sort_order ASC;
-                """
-            let stmt = try prepare(db, sql)
-            defer { finalize(stmt) }
-            bindInt(stmt, 1, routineIntID)
-            var result: [RoutineRun] = []
-            while try step(stmt) {
-                guard
-                    let uuidStr = columnText(stmt, 1),
-                    let uuid = UUID(uuidString: uuidStr),
-                    let updatedAt = columnDate(stmt, 6)
-                else { continue }
-                result.append(RoutineRun(
-                    id: columnInt(stmt, 0) ?? 0,
-                    clientUUID: uuid,
-                    routineID: columnInt(stmt, 2) ?? 0,
-                    runTemplateID: columnInt(stmt, 3) ?? 0,
-                    sortOrder: columnInt(stmt, 4) ?? 0,
-                    notes: columnText(stmt, 5),
-                    updatedAt: updatedAt
-                ))
-            }
-            return result
-        }
-    }
 }
