@@ -7,6 +7,7 @@ struct RunActiveSessionView: View {
     @State private var vm: RunActiveSessionViewModel
     @Environment(\.router) private var router
     @State private var showSummary = false
+    @State private var showPaceSheet = false
 
     private let dbManager: DatabaseManager
 
@@ -32,6 +33,13 @@ struct RunActiveSessionView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbarTitle }
         .task { await vm.start(sessionID: sessionID) }
+        .sheet(isPresented: $showPaceSheet) {
+            let bindable = Bindable(vm)
+            PacePickerSheet(
+                minutes: bindable.paceMinutes,
+                seconds: bindable.paceSeconds
+            ) { showPaceSheet = false }
+        }
         .sheet(isPresented: $showSummary) {
             RunSummaryView(
                 sessionRunID: vm.sessionRun?.clientUUID ?? UUID(),
@@ -81,14 +89,13 @@ struct RunActiveSessionView: View {
     // MARK: - Metrics grid
 
     private var metricsSection: some View {
-        HStack(spacing: AppSpacing.sm) {
-            DistanceTile(distanceKm: vm.distanceKm) { vm.distanceKm += 0.1 }
-            MetricTile(label: "PACE", value: vm.paceFormatted, unit: "/KM")
-            HRTile(hrBpm: vm.hrBpm,
+        let bindable = Bindable(vm)
+        return HStack(spacing: AppSpacing.sm) {
+            DistanceTile(distanceText: bindable.distanceText)
+            PaceTile(value: vm.paceDisplay) { showPaceSheet = true }
+            HRTile(hrText: bindable.hrText,
                    targetMin: vm.runTemplate?.hrBpmMin,
-                   targetMax: vm.runTemplate?.hrBpmMax,
-                   onDecrement: { vm.hrBpm = max(0, (vm.hrBpm ?? 60) - 1) },
-                   onIncrement: { vm.hrBpm = (vm.hrBpm ?? 60) + 1 })
+                   targetMax: vm.runTemplate?.hrBpmMax)
         }
         .padding(.horizontal, AppSpacing.lg)
         .padding(.vertical, AppSpacing.xl)

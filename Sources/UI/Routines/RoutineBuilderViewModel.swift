@@ -2,13 +2,30 @@ import Foundation
 import Observation
 import SQLite3
 
+// MARK: - ExerciseEntry
+
+@Observable
+@MainActor
+final class ExerciseEntry: Identifiable {
+    let id: UUID
+    let exercise: Exercise
+    var targetSets: Int?
+    var targetRepMin: Int?
+    var targetRepMax: Int?
+
+    init(exercise: Exercise) {
+        self.id = exercise.clientUUID
+        self.exercise = exercise
+    }
+}
+
 // MARK: - RoutineBuilderViewModel
 
 @Observable
 @MainActor
 final class RoutineBuilderViewModel {
     var name: String = ""
-    var entries: [Exercise] = []
+    var entries: [ExerciseEntry] = []
     var runEntries: [RunTemplate] = []
     var errorMessage: String?
     var didCreate = false
@@ -35,7 +52,7 @@ final class RoutineBuilderViewModel {
     }
 
     func add(_ exercise: Exercise) {
-        entries.append(exercise)
+        entries.append(ExerciseEntry(exercise: exercise))
     }
 
     func addRun(_ template: RunTemplate) {
@@ -66,16 +83,16 @@ final class RoutineBuilderViewModel {
             updatedAt: now,
             deletedAt: nil
         )
-        let exerciseEntries: [RoutineExercise] = entries.enumerated().map { index, exercise in
+        let exerciseEntries: [RoutineExercise] = entries.enumerated().map { index, entry in
             RoutineExercise(
                 id: 0,
                 clientUUID: UUID(),
                 routineID: 0,
-                exerciseID: exercise.id,
+                exerciseID: entry.exercise.id,
                 sortOrder: index + 1,
-                targetSets: nil,
-                targetRepMin: nil,
-                targetRepMax: nil,
+                targetSets: entry.targetSets,
+                targetRepMin: entry.targetRepMin,
+                targetRepMax: entry.targetRepMax,
                 targetRPE: nil,
                 targetDurationSecsMin: nil,
                 targetDurationSecsMax: nil,

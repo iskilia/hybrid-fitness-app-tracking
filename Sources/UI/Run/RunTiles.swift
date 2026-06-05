@@ -1,23 +1,21 @@
 import SwiftUI
 
 struct DistanceTile: View {
-    let distanceKm: Double
-    let onIncrement: () -> Void
+    @Binding var distanceText: String
 
     var body: some View {
         VStack(spacing: AppSpacing.xs) {
             Text("DISTANCE")
                 .font(AppFont.caption)
                 .foregroundStyle(AppColor.textSecondary)
-            Text(String(format: "%.2f", distanceKm))
+            TextField("0.00", text: $distanceText)
                 .font(AppFont.metricSmall)
                 .foregroundStyle(AppColor.textPrimary)
+                .keyboardType(.decimalPad)
+                .multilineTextAlignment(.center)
             Text("KM")
                 .font(AppFont.caption)
                 .foregroundStyle(AppColor.textSecondary)
-            Button("+0.1", action: onIncrement)
-                .font(AppFont.captionMono)
-                .foregroundStyle(AppColor.accent)
         }
         .frame(maxWidth: .infinity)
         .padding(AppSpacing.md)
@@ -52,29 +50,23 @@ struct MetricTile: View {
 }
 
 struct HRTile: View {
-    let hrBpm: Int?
+    @Binding var hrText: String
     let targetMin: Int?
     let targetMax: Int?
-    let onDecrement: () -> Void
-    let onIncrement: () -> Void
 
     var body: some View {
         VStack(spacing: AppSpacing.xs) {
             Text("HR")
                 .font(AppFont.caption)
                 .foregroundStyle(AppColor.textSecondary)
-            Text(hrBpm.map { String($0) } ?? "--")
+            TextField("--", text: $hrText)
                 .font(AppFont.metricSmall)
                 .foregroundStyle(AppColor.textPrimary)
+                .keyboardType(.numberPad)
+                .multilineTextAlignment(.center)
             Text("BPM")
                 .font(AppFont.caption)
                 .foregroundStyle(AppColor.textSecondary)
-            HStack(spacing: AppSpacing.sm) {
-                Button("−", action: onDecrement)
-                Button("+", action: onIncrement)
-            }
-            .font(AppFont.captionMono)
-            .foregroundStyle(AppColor.accent)
         }
         .frame(maxWidth: .infinity)
         .padding(AppSpacing.md)
@@ -88,6 +80,72 @@ struct HRTile: View {
                     .padding(.top, 2)
             }
         }
+    }
+}
+
+struct PaceTile: View {
+    let value: String
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(spacing: AppSpacing.xs) {
+                Text("PACE")
+                    .font(AppFont.caption)
+                    .foregroundStyle(AppColor.textSecondary)
+                Text(value)
+                    .font(AppFont.metricSmall)
+                    .foregroundStyle(AppColor.textPrimary)
+                Text("/KM")
+                    .font(AppFont.caption)
+                    .foregroundStyle(AppColor.textSecondary)
+                Color.clear.frame(height: 16)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(AppSpacing.md)
+            .background(AppColor.surface)
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct PacePickerSheet: View {
+    @Binding var minutes: Int
+    @Binding var seconds: Int
+    let onDone: () -> Void
+
+    var body: some View {
+        VStack(spacing: AppSpacing.lg) {
+            Text("PACE /KM")
+                .font(AppFont.headline)
+                .foregroundStyle(AppColor.textSecondary)
+                .padding(.top, AppSpacing.lg)
+
+            HStack(spacing: AppSpacing.sm) {
+                Picker("MIN", selection: $minutes) {
+                    ForEach(0...30, id: \.self) { Text(String(format: "%02d", $0)).tag($0) }
+                }
+                .pickerStyle(.wheel)
+                .frame(maxWidth: .infinity)
+
+                Text(":")
+                    .font(AppFont.metricSmall)
+                    .foregroundStyle(AppColor.textPrimary)
+
+                Picker("SEC", selection: $seconds) {
+                    ForEach(0...59, id: \.self) { Text(String(format: "%02d", $0)).tag($0) }
+                }
+                .pickerStyle(.wheel)
+                .frame(maxWidth: .infinity)
+            }
+
+            Button("Done", action: onDone)
+                .buttonStyle(PrimaryButtonStyle())
+                .padding(.horizontal, AppSpacing.lg)
+                .padding(.bottom, AppSpacing.lg)
+        }
+        .presentationDetents([.height(280)])
     }
 }
 

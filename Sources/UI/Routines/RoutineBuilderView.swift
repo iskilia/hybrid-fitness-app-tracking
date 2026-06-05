@@ -16,6 +16,8 @@ struct RoutineBuilderView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     headerSection
                     exerciseListSection
+                    addExerciseButton
+                        .padding(AppSpacing.lg)
                     runListSection
                     addRunButton
                         .padding(AppSpacing.lg)
@@ -27,7 +29,6 @@ struct RoutineBuilderView: View {
             createButton
         }
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { addExerciseButton }
         .task { await viewModel.load() }
         .sheet(isPresented: $showExerciseLibrary) {
             ExerciseLibraryView(dbManager: viewModel.dbManager, onSelect: { exercise in
@@ -95,18 +96,47 @@ private extension RoutineBuilderView {
 
     var exerciseListSection: some View {
         VStack(spacing: 0) {
-            ForEach(viewModel.entries) { exercise in
-                ExerciseRow(
-                    exercise: exercise,
-                    equipment: nil,
-                    primaryMuscle: nil,
-                    trailingContent: nil
-                )
+            ForEach(viewModel.entries) { entry in
+                @Bindable var bindableEntry = entry
+                VStack(spacing: 0) {
+                    ExerciseRow(
+                        exercise: entry.exercise,
+                        equipment: nil,
+                        primaryMuscle: nil,
+                        trailingContent: nil
+                    )
+                    HStack(spacing: AppSpacing.md) {
+                        entryField(label: "SETS", value: $bindableEntry.targetSets)
+                        entryField(label: "REP MIN", value: $bindableEntry.targetRepMin)
+                        entryField(label: "REP MAX", value: $bindableEntry.targetRepMax)
+                    }
+                    .padding(.horizontal, AppSpacing.lg)
+                    .padding(.bottom, AppSpacing.sm)
+                }
                 Divider()
                     .background(AppColor.divider)
                     .padding(.leading, AppSpacing.lg + 56 + AppSpacing.md)
             }
         }
+    }
+
+    private func entryField(label: String, value: Binding<Int?>) -> some View {
+        VStack(alignment: .leading, spacing: AppSpacing.xxs) {
+            Text(label)
+                .font(AppFont.caption)
+                .foregroundStyle(AppColor.textSecondary)
+            TextField("—", text: Binding(
+                get: { value.wrappedValue.map { "\($0)" } ?? "" },
+                set: { value.wrappedValue = Int($0) }
+            ))
+            .font(AppFont.captionMono)
+            .keyboardType(.numberPad)
+            .padding(.horizontal, AppSpacing.sm)
+            .padding(.vertical, AppSpacing.xs)
+            .background(AppColor.surface)
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
+        }
+        .frame(maxWidth: .infinity)
     }
 
     var runListSection: some View {
@@ -156,15 +186,17 @@ private extension RoutineBuilderView {
         )
     }
 
-    @ToolbarContentBuilder
-    var addExerciseButton: some ToolbarContent {
-        ToolbarItem(placement: .topBarTrailing) {
-            Button {
-                showExerciseLibrary = true
-            } label: {
-                Image(systemName: "plus")
-                    .foregroundStyle(AppColor.textPrimary)
-            }
+    var addExerciseButton: some View {
+        Button {
+            showExerciseLibrary = true
+        } label: {
+            Label("ADD EXERCISE", systemImage: "plus")
+                .font(AppFont.headline)
+                .foregroundStyle(AppColor.accent)
+                .frame(maxWidth: .infinity)
+                .padding(AppSpacing.lg)
+                .background(AppColor.surface)
+                .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
         }
     }
 }
