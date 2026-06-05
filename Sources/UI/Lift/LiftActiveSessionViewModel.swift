@@ -12,17 +12,22 @@ final class SetRowState: Identifiable {
     var repsText: String
     var rpeText: String
     var durationSecsText: String
+    var distanceText: String
     var isCompleted: Bool
 
     /// The persisted SessionSet once written to DB (used for updates).
     var persistedSet: SessionSet?
 
-    init(id: UUID = UUID(), weight: Double? = nil, reps: Int? = nil, rpe: Double? = nil, duration: Int? = nil, isCompleted: Bool = false) {
+    init(id: UUID = UUID(), weight: Double? = nil, reps: Int? = nil, rpe: Double? = nil, duration: Int? = nil, distance: Double? = nil, distanceUnit: DistanceUnit = .km, isCompleted: Bool = false) {
         self.id = id
         self.weightText = weight.map { $0.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int($0))" : String(format: "%.1f", $0) } ?? ""
         self.repsText   = reps.map { "\($0)" } ?? ""
         self.rpeText    = rpe.map { $0.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int($0))" : String(format: "%.1f", $0) } ?? ""
         self.durationSecsText = duration.map { "\($0)" } ?? ""
+        self.distanceText = distance.map {
+            let unitValue = distanceUnit == .km ? $0 / 1000.0 : $0 / 1609.344
+            return unitValue.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(unitValue))" : String(format: "%.3f", unitValue)
+        } ?? ""
         self.isCompleted = isCompleted
     }
 }
@@ -67,6 +72,7 @@ final class LiftActiveSessionViewModel {
     private let profileRepo: UserProfileRepository
     var showStorageFullConfirm = false
     private var maxDataMb: Int = 10
+    var distanceUnit: DistanceUnit = .km
 
     init(sessionID: UUID, dbManager: DatabaseManager) {
         self.sessionID = sessionID
@@ -82,6 +88,11 @@ final class LiftActiveSessionViewModel {
 
     func load() async {
         do {
+            if let p = try await profileRepo.get() {
+                maxDataMb = p.maxDataMb
+                distanceUnit = p.distanceUnit
+            }
+
             let s = try await sessionRepo.get(id: sessionID)
             self.session = s
 
@@ -99,6 +110,7 @@ final class LiftActiveSessionViewModel {
             let allExercises     = try await exerciseRepo.listAll()
             let exerciseByID     = Dictionary(uniqueKeysWithValues: allExercises.map { ($0.id, $0) })
 
+            let du = distanceUnit
             var builtCards: [ExerciseCardState] = []
             for re in routineExercises {
                 guard let exercise = exerciseByID[re.exerciseID] else { continue }
@@ -124,6 +136,8 @@ final class LiftActiveSessionViewModel {
                 let rows: [SetRowState] = existingSets.map { ss in
                     if exercise.metricType == .time {
                         return SetRowState(id: ss.clientUUID, rpe: ss.rpe, duration: ss.durationSecs, isCompleted: ss.completedAt != nil)
+                    } else if exercise.metricType == .distance {
+                        return SetRowState(id: ss.clientUUID, rpe: ss.rpe, distance: ss.distanceM, distanceUnit: du, isCompleted: ss.completedAt != nil)
                     } else {
                         return SetRowState(id: ss.clientUUID, weight: ss.weightKg, reps: ss.reps, rpe: ss.rpe, isCompleted: ss.completedAt != nil)
                     }
@@ -157,10 +171,15 @@ final class LiftActiveSessionViewModel {
             let setNumber = (card.rows.firstIndex(where: { $0.id == row.id }) ?? 0) + 1
             let rpe       = Double(row.rpeText)
             let isTime    = card.exercise.metricType == .time
+            let isDistance = card.exercise.metricType == .distance
 
-            let weightKg:     Double? = isTime ? nil : Double(row.weightText)
-            let reps:         Int?    = isTime ? nil : Int(row.repsText)
+            let weightKg:     Double? = (isTime || isDistance) ? nil : Double(row.weightText)
+            let reps:         Int?    = (isTime || isDistance) ? nil : Int(row.repsText)
             let durationSecs: Int?    = isTime ? Int(row.durationSecsText) : nil
+            let du = distanceUnit
+            let distanceM: Double? = isDistance
+                ? Double(row.distanceText).map { du == .km ? $0 * 1000.0 : $0 * 1609.344 }
+                : nil
 
             if let existing = row.persistedSet {
                 let updated = SessionSet(
@@ -174,7 +193,7 @@ final class LiftActiveSessionViewModel {
                     weightKg: weightKg,
                     reps: reps,
                     durationSecs: durationSecs,
-                    distanceM: nil,
+                    distanceM: distanceM,
                     rpe: rpe,
                     completedAt: row.isCompleted ? now : existing.completedAt,
                     notes: nil,
@@ -193,7 +212,7 @@ final class LiftActiveSessionViewModel {
                     weightKg: weightKg,
                     reps: reps,
                     durationSecs: durationSecs,
-                    distanceM: nil,
+                    distanceM: distanceM,
                     rpe: rpe,
                     completedAt: row.isCompleted ? now : nil,
                     notes: nil,

@@ -241,6 +241,9 @@ private func insertExercises(_ db: OpaquePointer) throws {
         // ID 34 — L-Sit (TIME · BODYWEIGHT · CORE · HIP FLEXORS)
         ExerciseSeed(id: 34, name: "L-Sit",                 abbr: "LS",  equipmentID: 3,
                      metricType: "TIME",             primaryMuscles: [11],     secondaryMuscles: [16]),
+        // ID 35 — Run (DISTANCE · BODYWEIGHT · QUADS · HAMSTRINGS · GLUTES · CALVES)
+        ExerciseSeed(id: 35, name: "Run",                   abbr: "RUN", equipmentID: 3,
+                     metricType: "DISTANCE",         primaryMuscles: [7],      secondaryMuscles: [8, 9, 10]),
     ]
 
     for ex in exercises {

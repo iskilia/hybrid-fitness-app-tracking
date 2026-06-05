@@ -4,6 +4,7 @@ import SwiftUI
 struct ExerciseCardView: View {
     @Bindable var card: ExerciseCardState
     let exerciseOrder: Int
+    let distanceUnit: DistanceUnit
     let onCommitRow: (SetRowState) -> Void
 
     var body: some View {
@@ -15,6 +16,7 @@ struct ExerciseCardView: View {
                     setIndex: index + 1,
                     prevDisplay: prevDisplay(for: index),
                     metricType: card.exercise.metricType,
+                    distanceUnit: distanceUnit,
                     row: row,
                     onCommit: { onCommitRow(row) }
                 )
@@ -64,6 +66,9 @@ struct ExerciseCardView: View {
             if card.exercise.metricType == .time {
                 Text("SECS")
                     .frame(maxWidth: .infinity, alignment: .center)
+            } else if card.exercise.metricType == .distance {
+                Text(distanceUnit == .km ? "KM" : "MI")
+                    .frame(maxWidth: .infinity, alignment: .center)
             } else {
                 Text("KG")
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -107,6 +112,10 @@ struct ExerciseCardView: View {
         if card.exercise.metricType == .time {
             guard !prev.durationSecsText.isEmpty else { return nil }
             return "\(prev.durationSecsText)s"
+        } else if card.exercise.metricType == .distance {
+            guard !prev.distanceText.isEmpty else { return nil }
+            let unit = distanceUnit == .km ? "km" : "mi"
+            return "\(prev.distanceText)\(unit)"
         } else {
             guard !prev.weightText.isEmpty || !prev.repsText.isEmpty else { return nil }
             return "\(prev.weightText.isEmpty ? "—" : prev.weightText)×\(prev.repsText.isEmpty ? "—" : prev.repsText)"

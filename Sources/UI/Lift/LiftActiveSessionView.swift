@@ -21,6 +21,7 @@ struct LiftActiveSessionView: View {
                         ExerciseCardView(
                             card: card,
                             exerciseOrder: index + 1,
+                            distanceUnit: viewModel.distanceUnit,
                             onCommitRow: { row in
                                 viewModel.persistSet(row, in: card, exerciseOrder: index + 1)
                             }

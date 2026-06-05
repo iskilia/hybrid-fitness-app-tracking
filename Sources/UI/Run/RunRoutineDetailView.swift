@@ -5,6 +5,7 @@ import SwiftUI
 struct RunRoutineDetailView: View {
     let routineID: UUID
     @State private var viewModel: RunRoutineDetailViewModel
+    @State private var showRunPicker = false
     @Environment(\.router) private var router
     @Environment(\.databaseManager) private var dbManager
 
@@ -28,6 +29,18 @@ struct RunRoutineDetailView: View {
         .task {
             await viewModel.load(routineID: routineID)
             await viewModel.loadLastExecution(routineID: routineID)
+        }
+        .sheet(isPresented: $showRunPicker) {
+            if let db = dbManager {
+                NavigationStack {
+                    RunTypesView(dbManager: db) { template in
+                        Task {
+                            await viewModel.addRun(template, routineID: routineID)
+                            showRunPicker = false
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -58,7 +71,7 @@ struct RunRoutineDetailView: View {
 
     private var addRunButton: some View {
         Button {
-            router?.push(.runTypes)
+            showRunPicker = true
         } label: {
             Label("ADD RUN", systemImage: "plus")
                 .font(AppFont.headline)

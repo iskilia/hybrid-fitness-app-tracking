@@ -9,9 +9,9 @@ enum Route: Hashable, Sendable {
     /// Includes the routine's WorkoutType so RootView can dispatch to the correct lane
     /// without an async fetch. Update callers to pass `routine.type`.
     case routineDetail(UUID, WorkoutType)
+    case routineBuilder
     case session(UUID)
     case exerciseLibrary
-    case runTypes
     case exerciseHistory(UUID)
     case settings
 }

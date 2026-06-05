@@ -25,7 +25,7 @@ struct RoutinesView: View {
             Text("Your")
                 .font(AppFont.displayMedium)
                 .foregroundStyle(AppColor.textPrimary)
-            Text("plans.")
+            Text("routines.")
                 .font(AppFont.displayMedium)
                 .foregroundStyle(AppColor.accent)
 
@@ -56,7 +56,7 @@ struct RoutinesView: View {
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
             Button {
-                router?.push(.routineDetail(UUID(), .lift))
+                router?.push(.routineBuilder)
             } label: {
                 Image(systemName: "plus")
                     .foregroundStyle(AppColor.textPrimary)

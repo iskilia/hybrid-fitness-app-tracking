@@ -12,7 +12,7 @@ final class RunTypesViewModel {
     var isLoading = false
     var errorMessage: String?
 
-    private let dbManager: DatabaseManager
+    let dbManager: DatabaseManager
 
     init(dbManager: DatabaseManager) {
         self.dbManager = dbManager

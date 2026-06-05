@@ -1,0 +1,180 @@
+import SwiftUI
+
+struct RoutineBuilderView: View {
+    @State private var viewModel: RoutineBuilderViewModel
+    @State private var showExerciseLibrary = false
+    @State private var showRunPicker = false
+    @Environment(\.router) private var router
+
+    init(dbManager: DatabaseManager) {
+        self._viewModel = State(initialValue: RoutineBuilderViewModel(dbManager: dbManager))
+    }
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    headerSection
+                    exerciseListSection
+                    runListSection
+                    addRunButton
+                        .padding(AppSpacing.lg)
+                }
+                .padding(.bottom, 100)
+            }
+            .background(AppColor.background)
+
+            createButton
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { addExerciseButton }
+        .task { await viewModel.load() }
+        .sheet(isPresented: $showExerciseLibrary) {
+            ExerciseLibraryView(dbManager: viewModel.dbManager, onSelect: { exercise in
+                viewModel.add(exercise)
+                showExerciseLibrary = false
+            })
+        }
+        .sheet(isPresented: $showRunPicker) {
+            NavigationStack {
+                RunTypesView(dbManager: viewModel.dbManager) { template in
+                    viewModel.addRun(template)
+                    showRunPicker = false
+                }
+            }
+        }
+        .confirmationDialog(
+            "This will delete your oldest history. Continue?",
+            isPresented: $viewModel.showEvictionConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Continue", role: .destructive) { Task { await viewModel.confirmEviction() } }
+            Button("Cancel", role: .cancel) { viewModel.cancelEviction() }
+        }
+        .alert("Not enough space", isPresented: $viewModel.showImpossibleAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Not enough space — edit your data first.")
+        }
+        .onChange(of: viewModel.didCreate) { _, created in
+            if created { router?.pop() }
+        }
+        .onChange(of: viewModel.didCancel) { _, cancelled in
+            if cancelled { router?.popToRoot() }
+        }
+    }
+}
+
+// MARK: - Subviews
+
+private extension RoutineBuilderView {
+
+    var headerSection: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            HStack(spacing: AppSpacing.md) {
+                BadgeView(kind: viewModel.derivedType)
+                Text("\(viewModel.entries.count) EXERCISES")
+                    .font(AppFont.caption)
+                    .foregroundStyle(AppColor.textSecondary)
+                    .textCase(.uppercase)
+                if !viewModel.runEntries.isEmpty {
+                    Text("\(viewModel.runEntries.count) RUNS")
+                        .font(AppFont.caption)
+                        .foregroundStyle(AppColor.textSecondary)
+                        .textCase(.uppercase)
+                }
+            }
+            TextField("Routine name", text: $viewModel.name)
+                .font(AppFont.displayMedium)
+                .foregroundStyle(AppColor.textPrimary)
+        }
+        .padding(.horizontal, AppSpacing.lg)
+        .padding(.top, AppSpacing.lg)
+        .padding(.bottom, AppSpacing.xl)
+    }
+
+    var exerciseListSection: some View {
+        VStack(spacing: 0) {
+            ForEach(viewModel.entries) { exercise in
+                ExerciseRow(
+                    exercise: exercise,
+                    equipment: nil,
+                    primaryMuscle: nil,
+                    trailingContent: nil
+                )
+                Divider()
+                    .background(AppColor.divider)
+                    .padding(.leading, AppSpacing.lg + 56 + AppSpacing.md)
+            }
+        }
+    }
+
+    var runListSection: some View {
+        VStack(spacing: 0) {
+            ForEach(viewModel.runEntries) { template in
+                RunRow(template: template, intervals: [])
+                Divider()
+                    .background(AppColor.divider)
+                    .padding(.leading, AppSpacing.lg + 56 + AppSpacing.md)
+            }
+        }
+    }
+
+    var addRunButton: some View {
+        Button {
+            showRunPicker = true
+        } label: {
+            Label("ADD RUN", systemImage: "plus")
+                .font(AppFont.headline)
+                .foregroundStyle(AppColor.accent)
+                .frame(maxWidth: .infinity)
+                .padding(AppSpacing.lg)
+                .background(AppColor.surface)
+                .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
+        }
+    }
+
+    var createButton: some View {
+        Button {
+            Task { await viewModel.create() }
+        } label: {
+            Text("CREATE")
+                .font(AppFont.title)
+                .fontWeight(.bold)
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, AppSpacing.lg)
+                .background(viewModel.isValid ? AppColor.accent : AppColor.textSecondary)
+                .clipShape(RoundedRectangle(cornerRadius: AppRadius.lg))
+        }
+        .disabled(!viewModel.isValid)
+        .padding(.horizontal, AppSpacing.lg)
+        .padding(.bottom, AppSpacing.xl)
+        .background(
+            AppColor.background
+                .ignoresSafeArea(edges: .bottom)
+        )
+    }
+
+    @ToolbarContentBuilder
+    var addExerciseButton: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            Button {
+                showExerciseLibrary = true
+            } label: {
+                Image(systemName: "plus")
+                    .foregroundStyle(AppColor.textPrimary)
+            }
+        }
+    }
+}
+
+#Preview {
+    if let db = try? DatabaseManager(url: nil) {
+        NavigationStack {
+            RoutineBuilderView(dbManager: db)
+        }
+        .environment(\.router, Router())
+        .background(AppColor.background)
+    }
+}

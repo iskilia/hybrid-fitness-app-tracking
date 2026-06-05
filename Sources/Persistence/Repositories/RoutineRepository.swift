@@ -47,19 +47,65 @@ struct RoutineRepository {
 
     func create(_ routine: Routine, exerciseEntries: [RoutineExercise], runEntries: [RoutineRun]) async throws {
         try await dbManager.transaction { db in
-            // Enforce 10-active cap
-            let capStmt = try prepare(db, "SELECT COUNT(*) FROM routine WHERE deleted_at IS NULL;")
-            defer { finalize(capStmt) }
-            _ = try step(capStmt)
-            let count = sqlite3_column_int(capStmt, 0)
-            guard count < 10 else {
-                throw DatabaseError.conflict("routine cap reached")
-            }
-
-            try insertRoutine(db, routine)
-            for entry in exerciseEntries { try insertRoutineExercise(db, entry) }
-            for entry in runEntries { try insertRoutineRun(db, entry) }
+            try insertRoutineWork(db, routine, exerciseEntries: exerciseEntries, runEntries: runEntries)
         }
+    }
+
+    /// Performs the cap check + routine + child inserts on an ALREADY-OPEN transaction handle.
+    /// Callers may pass `routineID: 0` on exercise/run entries — this method stamps the real
+    /// integer id (from sqlite3_last_insert_rowid) onto each child row before inserting.
+    /// Does NOT open/commit a transaction (caller owns it).
+    func insertRoutineWork(_ db: OpaquePointer, _ routine: Routine, exerciseEntries: [RoutineExercise], runEntries: [RoutineRun]) throws {
+        // Enforce 10-active cap
+        let capStmt = try prepare(db, "SELECT COUNT(*) FROM routine WHERE deleted_at IS NULL;")
+        defer { finalize(capStmt) }
+        _ = try step(capStmt)
+        let count = sqlite3_column_int(capStmt, 0)
+        guard count < 10 else {
+            throw DatabaseError.conflict("routine cap reached")
+        }
+
+        try insertRoutine(db, routine)
+        let routineRowID = Int(sqlite3_last_insert_rowid(db))
+
+        for entry in exerciseEntries {
+            try insertRoutineExercise(db, stamped(entry, routineID: routineRowID))
+        }
+        for entry in runEntries {
+            try insertRoutineRun(db, stamped(entry, routineID: routineRowID))
+        }
+    }
+
+    /// Returns a copy of the exercise entry with its `routineID` set to the resolved row id.
+    private func stamped(_ entry: RoutineExercise, routineID: Int) -> RoutineExercise {
+        RoutineExercise(
+            id: entry.id,
+            clientUUID: entry.clientUUID,
+            routineID: routineID,
+            exerciseID: entry.exerciseID,
+            sortOrder: entry.sortOrder,
+            targetSets: entry.targetSets,
+            targetRepMin: entry.targetRepMin,
+            targetRepMax: entry.targetRepMax,
+            targetRPE: entry.targetRPE,
+            targetDurationSecsMin: entry.targetDurationSecsMin,
+            targetDurationSecsMax: entry.targetDurationSecsMax,
+            notes: entry.notes,
+            updatedAt: entry.updatedAt
+        )
+    }
+
+    /// Returns a copy of the run entry with its `routineID` set to the resolved row id.
+    private func stamped(_ entry: RoutineRun, routineID: Int) -> RoutineRun {
+        RoutineRun(
+            id: entry.id,
+            clientUUID: entry.clientUUID,
+            routineID: routineID,
+            runTemplateID: entry.runTemplateID,
+            sortOrder: entry.sortOrder,
+            notes: entry.notes,
+            updatedAt: entry.updatedAt
+        )
     }
 
     // MARK: - Update (replace exercise + run entries)
