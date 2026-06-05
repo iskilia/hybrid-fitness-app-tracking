@@ -21,29 +21,27 @@ struct MixedActiveSessionView: View {
                     VStack(spacing: AppSpacing.sm) {
                         ForEach(Array(viewModel.blocks.enumerated()), id: \.element.id) { index, block in
                             if block.kind == .lift {
-                                LiftBlockCard(
-                                    blockNumber: index + 1,
-                                    exerciseName: block.exercise?.name ?? "",
-                                    thumbnailText: {
-                                        let name = block.exercise?.abbreviation ?? ""
-                                        return name.isEmpty ? String(block.exercise?.name.prefix(3) ?? "").uppercased() : name
-                                    }(),
-                                    metricType: block.exercise?.metricType ?? .reps,
-                                    distanceUnit: viewModel.distanceUnit,
-                                    targetSets: block.routineExercise?.targetSets,
-                                    targetRepMin: block.routineExercise?.targetRepMin,
-                                    targetRepMax: block.routineExercise?.targetRepMax,
-                                    notes: block.routineExercise?.notes,
-                                    rows: block.rows,
-                                    prevDisplays: block.prevDisplays,
-                                    isExpanded: viewModel.activeBlockID == block.id,
-                                    isDone: block.isDone,
-                                    onTap: { viewModel.expand(block) },
-                                    onMarkAllDone: { Task { await viewModel.markLiftBlockDone(block) } },
-                                    onNextBlock: { viewModel.advanceToNextBlock(after: block) },
-                                    onAddSet: nil,
-                                    onRowCommit: nil
-                                )
+                                if let exercise = block.exercise, let routineExercise = block.routineExercise {
+                                    LiftBlockCard(
+                                        blockNumber: index + 1,
+                                        exercise: exercise,
+                                        routineExercise: routineExercise,
+                                        distanceUnit: viewModel.distanceUnit,
+                                        rows: block.rows,
+                                        prevDisplays: block.prevDisplays,
+                                        isExpanded: viewModel.activeBlockID == block.id,
+                                        isDone: block.isDone,
+                                        actions: .init(
+                                            onTap: { viewModel.expand(block) },
+                                            onMarkAllDone: { Task { await viewModel.markLiftBlockDone(block) } },
+                                            onNextBlock: { viewModel.advanceToNextBlock(after: block) }
+                                        )
+                                    )
+                                } else {
+                                    // load() only appends a .lift block when both resolve; enforce in debug.
+                                    let _ = assertionFailure("lift block missing exercise/routineExercise")
+                                    EmptyView()
+                                }
                             } else {
                                 BlockCard(
                                     block: block,

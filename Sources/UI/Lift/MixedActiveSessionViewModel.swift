@@ -1,6 +1,5 @@
 import Foundation
 import Observation
-import SQLite3
 
 // MARK: - BlockKind
 
@@ -167,13 +166,13 @@ final class MixedActiveSessionViewModel {
             }
 
             // --- Build run blocks ---
-            let rawRuns = try await fetchRoutineRuns(routineIntID: routine.id)
+            let rawRuns = try await routineRepo.runs(routineIntID: routine.id)
             let templateRepo = RunTemplateRepository(dbManager: dbManager)
+            let templatesByID = Dictionary(uniqueKeysWithValues: try await templateRepo.listAll().map { ($0.id, $0) })
             var runBlocks: [MixedBlockState] = []
             var runOrder = 1
             for routineRun in rawRuns {
-                let templates = try await templateRepo.listAll()
-                guard let tmpl = templates.first(where: { $0.id == routineRun.runTemplateID }) else { continue }
+                guard let tmpl = templatesByID[routineRun.runTemplateID] else { continue }
 
                 // Create SessionRun row up front
                 let newRun = SessionRun(
@@ -334,95 +333,19 @@ final class MixedActiveSessionViewModel {
 
     private func persistLiftRow(_ row: SetRowState, in block: MixedBlockState, exerciseOrder: Int) async {
         guard let s = session, let exercise = block.exercise else { return }
-        let isTime     = exercise.metricType == .time
-        let isDistance = exercise.metricType == .distance
-        if isTime,      row.durationSecsText.isEmpty { return }
-        if isDistance,  row.distanceText.isEmpty     { return }
-        if !isTime && !isDistance, row.weightText.isEmpty && row.repsText.isEmpty { return }
-
-        let now = Date()
         let setNumber = (block.rows.firstIndex(where: { $0.id == row.id }) ?? 0) + 1
-        let rpe = Double(row.rpeText)
-        let du = distanceUnit
-
-        let weightKg:     Double? = (isTime || isDistance) ? nil : Double(row.weightText)
-        let reps:         Int?    = (isTime || isDistance) ? nil : Int(row.repsText)
-        let durationSecs: Int?    = isTime ? Int(row.durationSecsText) : nil
-        let distanceM:    Double? = isDistance
-            ? Double(row.distanceText).map { du == .km ? $0 * 1000.0 : $0 * 1609.344 }
-            : nil
-
-        if let existing = row.persistedSet {
-            let updated = SessionSet(
-                id: existing.id,
-                clientUUID: existing.clientUUID,
-                sessionID: existing.sessionID,
-                exerciseID: existing.exerciseID,
+        do {
+            try await SetRowPersistence.persist(
+                row,
+                exercise: exercise,
+                sessionRowID: s.id,
                 exerciseOrder: exerciseOrder,
                 setNumber: setNumber,
-                setType: existing.setType,
-                weightKg: weightKg,
-                reps: reps,
-                durationSecs: durationSecs,
-                distanceM: distanceM,
-                rpe: rpe,
-                completedAt: row.isCompleted ? now : existing.completedAt,
-                notes: nil,
-                updatedAt: now
+                distanceUnit: distanceUnit,
+                repo: sessionSetRepo
             )
-            try? await sessionSetRepo.update(updated)
-        } else {
-            let newSet = SessionSet(
-                id: 0,
-                clientUUID: row.id,
-                sessionID: s.id,
-                exerciseID: exercise.id,
-                exerciseOrder: exerciseOrder,
-                setNumber: setNumber,
-                setType: .working,
-                weightKg: weightKg,
-                reps: reps,
-                durationSecs: durationSecs,
-                distanceM: distanceM,
-                rpe: rpe,
-                completedAt: row.isCompleted ? now : nil,
-                notes: nil,
-                updatedAt: now
-            )
-            try? await sessionSetRepo.append(newSet)
-            row.persistedSet = newSet
-        }
-    }
-
-    private func fetchRoutineRuns(routineIntID: Int) async throws -> [RoutineRun] {
-        try await dbManager.read { db in
-            let sql = """
-                SELECT id, client_uuid, routine_id, run_template_id, sort_order, notes, updated_at
-                FROM routine_run
-                WHERE routine_id = ?
-                ORDER BY sort_order ASC;
-                """
-            let stmt = try prepare(db, sql)
-            defer { finalize(stmt) }
-            bindInt(stmt, 1, routineIntID)
-            var result: [RoutineRun] = []
-            while try step(stmt) {
-                guard
-                    let uuidStr = columnText(stmt, 1),
-                    let uuid = UUID(uuidString: uuidStr),
-                    let updatedAt = columnDate(stmt, 6)
-                else { continue }
-                result.append(RoutineRun(
-                    id: columnInt(stmt, 0) ?? 0,
-                    clientUUID: uuid,
-                    routineID: columnInt(stmt, 2) ?? 0,
-                    runTemplateID: columnInt(stmt, 3) ?? 0,
-                    sortOrder: columnInt(stmt, 4) ?? 0,
-                    notes: columnText(stmt, 5),
-                    updatedAt: updatedAt
-                ))
-            }
-            return result
+        } catch {
+            errorMessage = "Couldn't save set: \(error.localizedDescription)"
         }
     }
 
