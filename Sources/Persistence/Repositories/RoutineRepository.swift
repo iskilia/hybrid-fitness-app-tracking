@@ -489,6 +489,40 @@ struct RoutineRepository {
         )
     }
 
+    // MARK: - List runs for a routine (ordered by sort_order)
+
+    func runs(routineIntID: Int) async throws -> [RoutineRun] {
+        try await dbManager.read { db in
+            let sql = """
+                SELECT id, client_uuid, routine_id, run_template_id, sort_order, notes, updated_at
+                FROM routine_run
+                WHERE routine_id = ?
+                ORDER BY sort_order ASC;
+                """
+            let stmt = try prepare(db, sql)
+            defer { finalize(stmt) }
+            bindInt(stmt, 1, routineIntID)
+            var result: [RoutineRun] = []
+            while try step(stmt) {
+                guard
+                    let uuidStr = columnText(stmt, 1),
+                    let uuid = UUID(uuidString: uuidStr),
+                    let updatedAt = columnDate(stmt, 6)
+                else { continue }
+                result.append(RoutineRun(
+                    id: columnInt(stmt, 0) ?? 0,
+                    clientUUID: uuid,
+                    routineID: columnInt(stmt, 2) ?? 0,
+                    runTemplateID: columnInt(stmt, 3) ?? 0,
+                    sortOrder: columnInt(stmt, 4) ?? 0,
+                    notes: columnText(stmt, 5),
+                    updatedAt: updatedAt
+                ))
+            }
+            return result
+        }
+    }
+
     // MARK: - Summary (exercise + run counts for a routine)
 
     func summary(routineID: UUID) async throws -> (exerciseCount: Int, runCount: Int) {

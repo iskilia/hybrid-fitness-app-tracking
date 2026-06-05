@@ -193,66 +193,16 @@ final class LiftActiveSessionViewModel {
 
     private func persistRow(_ row: SetRowState, in card: ExerciseCardState, exerciseOrder: Int) async {
         guard let s = session else { return }
-
-        // Skip fully-empty rows
-        let isTime     = card.exercise.metricType == .time
-        let isDistance = card.exercise.metricType == .distance
-        if isTime, row.durationSecsText.isEmpty { return }
-        if isDistance, row.distanceText.isEmpty { return }
-        if !isTime && !isDistance, row.weightText.isEmpty && row.repsText.isEmpty { return }
-
-        let now       = Date()
         let setNumber = (card.rows.firstIndex(where: { $0.id == row.id }) ?? 0) + 1
-        let rpe       = Double(row.rpeText)
-
-        let weightKg:     Double? = (isTime || isDistance) ? nil : Double(row.weightText)
-        let reps:         Int?    = (isTime || isDistance) ? nil : Int(row.repsText)
-        let durationSecs: Int?    = isTime ? Int(row.durationSecsText) : nil
-        let du = distanceUnit
-        let distanceM: Double? = isDistance
-            ? Double(row.distanceText).map { du == .km ? $0 * 1000.0 : $0 * 1609.344 }
-            : nil
-
-        if let existing = row.persistedSet {
-            let updated = SessionSet(
-                id: existing.id,
-                clientUUID: existing.clientUUID,
-                sessionID: existing.sessionID,
-                exerciseID: existing.exerciseID,
-                exerciseOrder: exerciseOrder,
-                setNumber: setNumber,
-                setType: existing.setType,
-                weightKg: weightKg,
-                reps: reps,
-                durationSecs: durationSecs,
-                distanceM: distanceM,
-                rpe: rpe,
-                completedAt: row.isCompleted ? now : existing.completedAt,
-                notes: nil,
-                updatedAt: now
-            )
-            try? await sessionSetRepo.update(updated)
-        } else {
-            let newSet = SessionSet(
-                id: 0,
-                clientUUID: row.id,
-                sessionID: s.id,
-                exerciseID: card.exercise.id,
-                exerciseOrder: exerciseOrder,
-                setNumber: setNumber,
-                setType: .working,
-                weightKg: weightKg,
-                reps: reps,
-                durationSecs: durationSecs,
-                distanceM: distanceM,
-                rpe: rpe,
-                completedAt: row.isCompleted ? now : nil,
-                notes: nil,
-                updatedAt: now
-            )
-            try? await sessionSetRepo.append(newSet)
-            row.persistedSet = newSet
-        }
+        await SetRowPersistence.persist(
+            row,
+            exercise: card.exercise,
+            sessionRowID: s.id,
+            exerciseOrder: exerciseOrder,
+            setNumber: setNumber,
+            distanceUnit: distanceUnit,
+            repo: sessionSetRepo
+        )
     }
 
     /// Persists every row that contains data, awaiting each write so rows land before FINISH.

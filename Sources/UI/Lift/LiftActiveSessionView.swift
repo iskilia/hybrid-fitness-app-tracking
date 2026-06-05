@@ -18,29 +18,22 @@ struct LiftActiveSessionView: View {
                 VStack(alignment: .leading, spacing: AppSpacing.lg) {
                     timerHeader
                     ForEach(Array(viewModel.cards.enumerated()), id: \.element.id) { index, card in
-                        let abbrev: String = {
-                            let a = card.exercise.abbreviation
-                            return a.isEmpty ? String(card.exercise.name.prefix(3)).uppercased() : a
-                        }()
                         LiftBlockCard(
                             blockNumber: index + 1,
-                            exerciseName: card.exercise.name,
-                            thumbnailText: abbrev,
-                            metricType: card.exercise.metricType,
+                            exercise: card.exercise,
+                            routineExercise: card.routineExercise,
                             distanceUnit: viewModel.distanceUnit,
-                            targetSets: card.routineExercise.targetSets,
-                            targetRepMin: card.routineExercise.targetRepMin,
-                            targetRepMax: card.routineExercise.targetRepMax,
-                            notes: card.routineExercise.notes,
                             rows: card.rows,
                             prevDisplays: prevDisplays(for: card),
                             isExpanded: viewModel.expandedCardID == card.id,
                             isDone: viewModel.doneCardIDs.contains(card.id),
-                            onTap: { viewModel.toggleExpand(card) },
-                            onMarkAllDone: { Task { await viewModel.markCardDone(card, exerciseOrder: index + 1) } },
-                            onNextBlock: { viewModel.advanceToNextCard(after: card) },
-                            onAddSet: { viewModel.addSet(to: card) },
-                            onRowCommit: { row in viewModel.persistSet(row, in: card, exerciseOrder: index + 1) }
+                            actions: .init(
+                                onTap: { viewModel.toggleExpand(card) },
+                                onMarkAllDone: { Task { await viewModel.markCardDone(card, exerciseOrder: index + 1) } },
+                                onNextBlock: { viewModel.advanceToNextCard(after: card) },
+                                onAddSet: { viewModel.addSet(to: card) },
+                                onRowCommit: { row in viewModel.persistSet(row, in: card, exerciseOrder: index + 1) }
+                            )
                         )
                     }
                 }

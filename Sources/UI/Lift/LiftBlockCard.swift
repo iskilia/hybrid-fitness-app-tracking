@@ -5,30 +5,37 @@ import SwiftUI
 /// Reusable lift block card used by both LiftActiveSessionView and MixedActiveSessionView (lift path).
 /// Owns the collapsed header + expanded lift body UI.
 struct LiftBlockCard: View {
+    /// Callbacks the card can fire. `onAddSet`/`onRowCommit` are optional (Mixed omits them).
+    struct Actions {
+        let onTap: () -> Void
+        let onMarkAllDone: () -> Void
+        let onNextBlock: () -> Void
+        var onAddSet: (() -> Void)? = nil
+        var onRowCommit: ((SetRowState) -> Void)? = nil
+    }
+
     let blockNumber: Int
-    let exerciseName: String
-    let thumbnailText: String
-    let metricType: MetricType
+    let exercise: Exercise
+    let routineExercise: RoutineExercise
     let distanceUnit: DistanceUnit
-    let targetSets: Int?
-    let targetRepMin: Int?
-    let targetRepMax: Int?
-    let notes: String?
     let rows: [SetRowState]
     let prevDisplays: [String?]
     let isExpanded: Bool
     let isDone: Bool
-    let onTap: () -> Void
-    let onMarkAllDone: () -> Void
-    let onNextBlock: () -> Void
-    let onAddSet: (() -> Void)?
-    let onRowCommit: ((SetRowState) -> Void)?
+    let actions: Actions
+
+    private var metricType: MetricType { exercise.metricType }
+
+    private var thumbnailText: String {
+        let a = exercise.abbreviation
+        return a.isEmpty ? String(exercise.name.prefix(3)).uppercased() : a
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             collapsedHeader
                 .contentShape(Rectangle())
-                .onTapGesture { onTap() }
+                .onTapGesture { actions.onTap() }
 
             if isExpanded {
                 Divider().background(AppColor.divider)
@@ -57,7 +64,7 @@ struct LiftBlockCard: View {
                     BadgeView(kind: .lift)
                     statePill
                 }
-                Text(exerciseName)
+                Text(exercise.name)
                     .font(AppFont.bodyBold)
                     .foregroundStyle(AppColor.textPrimary)
                 Text(subLine)
@@ -123,10 +130,10 @@ struct LiftBlockCard: View {
     }
 
     private var subLine: String {
-        let sets = targetSets ?? rows.count
+        let sets = routineExercise.targetSets ?? rows.count
         let repStr: String
-        if let lo = targetRepMin, let hi = targetRepMax { repStr = "\(lo)–\(hi)" }
-        else if let lo = targetRepMin { repStr = "\(lo)" }
+        if let lo = routineExercise.targetRepMin, let hi = routineExercise.targetRepMax { repStr = "\(lo)–\(hi)" }
+        else if let lo = routineExercise.targetRepMin { repStr = "\(lo)" }
         else { repStr = "—" }
         let topKg = rows.compactMap { Double($0.weightText) }.max()
         let kgStr: String
@@ -157,7 +164,7 @@ struct LiftBlockCard: View {
 
     private var liftExpandedBody: some View {
         VStack(alignment: .leading, spacing: AppSpacing.sm) {
-            if let notes = notes, !notes.isEmpty {
+            if let notes = routineExercise.notes, !notes.isEmpty {
                 Text(notes)
                     .font(AppFont.body.italic())
                     .foregroundStyle(AppColor.textSecondary)
@@ -174,14 +181,14 @@ struct LiftBlockCard: View {
                     metricType: metricType,
                     distanceUnit: distanceUnit,
                     row: row,
-                    onCommit: onRowCommit.map { commit in { commit(row) } }
+                    onCommit: actions.onRowCommit.map { commit in { commit(row) } }
                 )
                 if index < rows.count - 1 {
                     Divider().background(AppColor.divider).padding(.leading, AppSpacing.md)
                 }
             }
 
-            if let addSet = onAddSet {
+            if let addSet = actions.onAddSet {
                 Button {
                     addSet()
                 } label: {
@@ -197,7 +204,7 @@ struct LiftBlockCard: View {
 
             HStack(spacing: AppSpacing.sm) {
                 Button {
-                    onMarkAllDone()
+                    actions.onMarkAllDone()
                 } label: {
                     Text("MARK ALL DONE")
                         .font(AppFont.caption)
@@ -214,7 +221,7 @@ struct LiftBlockCard: View {
                 }
 
                 Button {
-                    onNextBlock()
+                    actions.onNextBlock()
                 } label: {
                     Text("NEXT BLOCK →")
                         .font(AppFont.headline)

@@ -20,29 +20,21 @@ struct MixedActiveSessionView: View {
                 ScrollView {
                     VStack(spacing: AppSpacing.sm) {
                         ForEach(Array(viewModel.blocks.enumerated()), id: \.element.id) { index, block in
-                            if block.kind == .lift {
+                            if block.kind == .lift, let exercise = block.exercise, let routineExercise = block.routineExercise {
                                 LiftBlockCard(
                                     blockNumber: index + 1,
-                                    exerciseName: block.exercise?.name ?? "",
-                                    thumbnailText: {
-                                        let name = block.exercise?.abbreviation ?? ""
-                                        return name.isEmpty ? String(block.exercise?.name.prefix(3) ?? "").uppercased() : name
-                                    }(),
-                                    metricType: block.exercise?.metricType ?? .reps,
+                                    exercise: exercise,
+                                    routineExercise: routineExercise,
                                     distanceUnit: viewModel.distanceUnit,
-                                    targetSets: block.routineExercise?.targetSets,
-                                    targetRepMin: block.routineExercise?.targetRepMin,
-                                    targetRepMax: block.routineExercise?.targetRepMax,
-                                    notes: block.routineExercise?.notes,
                                     rows: block.rows,
                                     prevDisplays: block.prevDisplays,
                                     isExpanded: viewModel.activeBlockID == block.id,
                                     isDone: block.isDone,
-                                    onTap: { viewModel.expand(block) },
-                                    onMarkAllDone: { Task { await viewModel.markLiftBlockDone(block) } },
-                                    onNextBlock: { viewModel.advanceToNextBlock(after: block) },
-                                    onAddSet: nil,
-                                    onRowCommit: nil
+                                    actions: .init(
+                                        onTap: { viewModel.expand(block) },
+                                        onMarkAllDone: { Task { await viewModel.markLiftBlockDone(block) } },
+                                        onNextBlock: { viewModel.advanceToNextBlock(after: block) }
+                                    )
                                 )
                             } else {
                                 BlockCard(
