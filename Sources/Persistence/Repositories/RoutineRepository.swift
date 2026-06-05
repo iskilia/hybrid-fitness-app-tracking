@@ -69,35 +69,43 @@ struct RoutineRepository {
         let routineRowID = Int(sqlite3_last_insert_rowid(db))
 
         for entry in exerciseEntries {
-            let stamped = RoutineExercise(
-                id: entry.id,
-                clientUUID: entry.clientUUID,
-                routineID: routineRowID,
-                exerciseID: entry.exerciseID,
-                sortOrder: entry.sortOrder,
-                targetSets: entry.targetSets,
-                targetRepMin: entry.targetRepMin,
-                targetRepMax: entry.targetRepMax,
-                targetRPE: entry.targetRPE,
-                targetDurationSecsMin: entry.targetDurationSecsMin,
-                targetDurationSecsMax: entry.targetDurationSecsMax,
-                notes: entry.notes,
-                updatedAt: entry.updatedAt
-            )
-            try insertRoutineExercise(db, stamped)
+            try insertRoutineExercise(db, stamped(entry, routineID: routineRowID))
         }
         for entry in runEntries {
-            let stamped = RoutineRun(
-                id: entry.id,
-                clientUUID: entry.clientUUID,
-                routineID: routineRowID,
-                runTemplateID: entry.runTemplateID,
-                sortOrder: entry.sortOrder,
-                notes: entry.notes,
-                updatedAt: entry.updatedAt
-            )
-            try insertRoutineRun(db, stamped)
+            try insertRoutineRun(db, stamped(entry, routineID: routineRowID))
         }
+    }
+
+    /// Returns a copy of the exercise entry with its `routineID` set to the resolved row id.
+    private func stamped(_ entry: RoutineExercise, routineID: Int) -> RoutineExercise {
+        RoutineExercise(
+            id: entry.id,
+            clientUUID: entry.clientUUID,
+            routineID: routineID,
+            exerciseID: entry.exerciseID,
+            sortOrder: entry.sortOrder,
+            targetSets: entry.targetSets,
+            targetRepMin: entry.targetRepMin,
+            targetRepMax: entry.targetRepMax,
+            targetRPE: entry.targetRPE,
+            targetDurationSecsMin: entry.targetDurationSecsMin,
+            targetDurationSecsMax: entry.targetDurationSecsMax,
+            notes: entry.notes,
+            updatedAt: entry.updatedAt
+        )
+    }
+
+    /// Returns a copy of the run entry with its `routineID` set to the resolved row id.
+    private func stamped(_ entry: RoutineRun, routineID: Int) -> RoutineRun {
+        RoutineRun(
+            id: entry.id,
+            clientUUID: entry.clientUUID,
+            routineID: routineID,
+            runTemplateID: entry.runTemplateID,
+            sortOrder: entry.sortOrder,
+            notes: entry.notes,
+            updatedAt: entry.updatedAt
+        )
     }
 
     // MARK: - Update (replace exercise + run entries)
