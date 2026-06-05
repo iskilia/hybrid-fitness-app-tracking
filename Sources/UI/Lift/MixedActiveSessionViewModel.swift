@@ -245,6 +245,7 @@ final class MixedActiveSessionViewModel {
         try? await sessionRunRepo.finish(
             id: run.clientUUID,
             distanceKm: distanceKm,
+            // Mixed sessions have no per-block timer yet, so run duration is not captured here.
             durationSec: 0,
             avgPaceSecPerKm: avgPaceSec,
             avgHrBpm: avgHr
@@ -275,6 +276,7 @@ final class MixedActiveSessionViewModel {
                 try? await sessionRunRepo.finish(
                     id: run.clientUUID,
                     distanceKm: distanceKm,
+                    // Mixed sessions have no per-block timer yet, so run duration is not captured here.
                     durationSec: 0,
                     avgPaceSecPerKm: avgPaceSec,
                     avgHrBpm: avgHr

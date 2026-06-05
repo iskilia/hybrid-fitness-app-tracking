@@ -28,7 +28,7 @@ struct MixedActiveSessionView: View {
                                         let name = block.exercise?.abbreviation ?? ""
                                         return name.isEmpty ? String(block.exercise?.name.prefix(3) ?? "").uppercased() : name
                                     }(),
-                                    metricType: .reps,
+                                    metricType: block.exercise?.metricType ?? .reps,
                                     distanceUnit: viewModel.distanceUnit,
                                     targetSets: block.routineExercise?.targetSets,
                                     targetRepMin: block.routineExercise?.targetRepMin,
@@ -51,7 +51,6 @@ struct MixedActiveSessionView: View {
                                     isExpanded: viewModel.activeBlockID == block.id,
                                     distanceUnit: viewModel.distanceUnit,
                                     onTap: { viewModel.expand(block) },
-                                    onMarkLiftDone: { Task { await viewModel.markLiftBlockDone(block) } },
                                     onNextBlock: { viewModel.advanceToNextBlock(after: block) },
                                     onMarkRunDone: { Task { await viewModel.markRunBlockDone(block) } }
                                 )
@@ -218,7 +217,6 @@ private struct BlockCard: View {
     let isExpanded: Bool
     let distanceUnit: DistanceUnit
     let onTap: () -> Void
-    let onMarkLiftDone: () -> Void
     let onNextBlock: () -> Void
     let onMarkRunDone: () -> Void
 
