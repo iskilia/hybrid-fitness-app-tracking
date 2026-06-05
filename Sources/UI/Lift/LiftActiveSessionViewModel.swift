@@ -194,15 +194,19 @@ final class LiftActiveSessionViewModel {
     private func persistRow(_ row: SetRowState, in card: ExerciseCardState, exerciseOrder: Int) async {
         guard let s = session else { return }
         let setNumber = (card.rows.firstIndex(where: { $0.id == row.id }) ?? 0) + 1
-        await SetRowPersistence.persist(
-            row,
-            exercise: card.exercise,
-            sessionRowID: s.id,
-            exerciseOrder: exerciseOrder,
-            setNumber: setNumber,
-            distanceUnit: distanceUnit,
-            repo: sessionSetRepo
-        )
+        do {
+            try await SetRowPersistence.persist(
+                row,
+                exercise: card.exercise,
+                sessionRowID: s.id,
+                exerciseOrder: exerciseOrder,
+                setNumber: setNumber,
+                distanceUnit: distanceUnit,
+                repo: sessionSetRepo
+            )
+        } catch {
+            errorMessage = "Couldn't save set: \(error.localizedDescription)"
+        }
     }
 
     /// Persists every row that contains data, awaiting each write so rows land before FINISH.

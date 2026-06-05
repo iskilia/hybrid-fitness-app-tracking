@@ -10,6 +10,8 @@ enum SetRowPersistence {
 
     /// Inserts or updates `row` for `exercise`. Fully-empty rows are skipped.
     /// `setNumber` is the row's 1-based position within its block.
+    /// Throws if the underlying write fails so callers can surface the error
+    /// (rather than silently dropping the set).
     static func persist(
         _ row: SetRowState,
         exercise: Exercise,
@@ -18,7 +20,7 @@ enum SetRowPersistence {
         setNumber: Int,
         distanceUnit: DistanceUnit,
         repo: SessionSetRepository
-    ) async {
+    ) async throws {
         let isTime     = exercise.metricType == .time
         let isDistance = exercise.metricType == .distance
 
@@ -54,7 +56,9 @@ enum SetRowPersistence {
                 notes: nil,
                 updatedAt: now
             )
-            try? await repo.update(updated)
+            try await repo.update(updated)
+            // Keep the cached snapshot current (e.g. completedAt) for the next edit.
+            row.persistedSet = updated
         } else {
             let newSet = SessionSet(
                 id: 0,
@@ -73,7 +77,7 @@ enum SetRowPersistence {
                 notes: nil,
                 updatedAt: now
             )
-            try? await repo.append(newSet)
+            try await repo.append(newSet)
             row.persistedSet = newSet
         }
     }

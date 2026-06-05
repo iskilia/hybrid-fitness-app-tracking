@@ -334,15 +334,19 @@ final class MixedActiveSessionViewModel {
     private func persistLiftRow(_ row: SetRowState, in block: MixedBlockState, exerciseOrder: Int) async {
         guard let s = session, let exercise = block.exercise else { return }
         let setNumber = (block.rows.firstIndex(where: { $0.id == row.id }) ?? 0) + 1
-        await SetRowPersistence.persist(
-            row,
-            exercise: exercise,
-            sessionRowID: s.id,
-            exerciseOrder: exerciseOrder,
-            setNumber: setNumber,
-            distanceUnit: distanceUnit,
-            repo: sessionSetRepo
-        )
+        do {
+            try await SetRowPersistence.persist(
+                row,
+                exercise: exercise,
+                sessionRowID: s.id,
+                exerciseOrder: exerciseOrder,
+                setNumber: setNumber,
+                distanceUnit: distanceUnit,
+                repo: sessionSetRepo
+            )
+        } catch {
+            errorMessage = "Couldn't save set: \(error.localizedDescription)"
+        }
     }
 
     private func parsePaceSecs(_ text: String) -> Int? {

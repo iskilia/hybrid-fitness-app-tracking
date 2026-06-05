@@ -77,7 +77,7 @@ final class Pass10SetRowPersistenceTests: XCTestCase {
         let ex = try await exercise(metricType: "REPS", db)
         let row = SetRowState()
         row.weightText = "60"; row.repsText = "5"
-        await SetRowPersistence.persist(row, exercise: ex, sessionRowID: session.id,
+        try await SetRowPersistence.persist(row, exercise: ex, sessionRowID: session.id,
             exerciseOrder: 1, setNumber: 1, distanceUnit: .km, repo: SessionSetRepository(dbManager: db))
 
         let w = try await column(db, sessionID: session.id, exerciseID: ex.id, "weight_kg")
@@ -92,7 +92,7 @@ final class Pass10SetRowPersistenceTests: XCTestCase {
         let ex = try await exercise(metricType: "TIME", db)
         let row = SetRowState()
         row.durationSecsText = "45"
-        await SetRowPersistence.persist(row, exercise: ex, sessionRowID: session.id,
+        try await SetRowPersistence.persist(row, exercise: ex, sessionRowID: session.id,
             exerciseOrder: 1, setNumber: 1, distanceUnit: .km, repo: SessionSetRepository(dbManager: db))
 
         let d = try await column(db, sessionID: session.id, exerciseID: ex.id, "duration_secs")
@@ -105,7 +105,7 @@ final class Pass10SetRowPersistenceTests: XCTestCase {
         let ex = try await exercise(metricType: "DISTANCE", db)
         let row = SetRowState()
         row.distanceText = "1"
-        await SetRowPersistence.persist(row, exercise: ex, sessionRowID: session.id,
+        try await SetRowPersistence.persist(row, exercise: ex, sessionRowID: session.id,
             exerciseOrder: 1, setNumber: 1, distanceUnit: .mi, repo: SessionSetRepository(dbManager: db))
 
         let m = try await column(db, sessionID: session.id, exerciseID: ex.id, "distance_m")
@@ -118,11 +118,37 @@ final class Pass10SetRowPersistenceTests: XCTestCase {
         let ex = try await exercise(metricType: "DISTANCE", db)
         let row = SetRowState()
         row.distanceText = "2"
-        await SetRowPersistence.persist(row, exercise: ex, sessionRowID: session.id,
+        try await SetRowPersistence.persist(row, exercise: ex, sessionRowID: session.id,
             exerciseOrder: 1, setNumber: 1, distanceUnit: .km, repo: SessionSetRepository(dbManager: db))
 
         let m = try await column(db, sessionID: session.id, exerciseID: ex.id, "distance_m")
         XCTAssertEqual(m ?? 0, 2000, accuracy: 0.001, "2 km must persist as 2000 m")
+    }
+
+    /// Second persist of the same row must UPDATE (not duplicate-insert) and refresh
+    /// the cached `persistedSet` snapshot.
+    func testUpdateRefreshesSnapshotAndDoesNotDuplicate() async throws {
+        let db = try makeTempDB()
+        let session = try await SessionRepository(dbManager: db).start(routineID: nil, type: .lift)
+        let ex = try await exercise(metricType: "REPS", db)
+        let repo = SessionSetRepository(dbManager: db)
+        let row = SetRowState()
+
+        row.weightText = "60"; row.repsText = "5"
+        try await SetRowPersistence.persist(row, exercise: ex, sessionRowID: session.id,
+            exerciseOrder: 1, setNumber: 1, distanceUnit: .km, repo: repo)
+        XCTAssertEqual(row.persistedSet?.weightKg ?? 0, 60, accuracy: 0.001)
+
+        row.weightText = "70"
+        try await SetRowPersistence.persist(row, exercise: ex, sessionRowID: session.id,
+            exerciseOrder: 1, setNumber: 1, distanceUnit: .km, repo: repo)
+
+        let count = try await rowCount(db, sessionID: session.id, exerciseID: ex.id)
+        XCTAssertEqual(count, 1, "second persist must update, not insert a duplicate")
+        let w = try await column(db, sessionID: session.id, exerciseID: ex.id, "weight_kg")
+        XCTAssertEqual(w ?? 0, 70, accuracy: 0.001)
+        XCTAssertEqual(row.persistedSet?.weightKg ?? 0, 70, accuracy: 0.001,
+            "cached snapshot must reflect the update")
     }
 
     func testEmptyRowSkipped() async throws {
@@ -130,7 +156,7 @@ final class Pass10SetRowPersistenceTests: XCTestCase {
         let session = try await SessionRepository(dbManager: db).start(routineID: nil, type: .lift)
         let ex = try await exercise(metricType: "REPS", db)
         let row = SetRowState()  // all blank
-        await SetRowPersistence.persist(row, exercise: ex, sessionRowID: session.id,
+        try await SetRowPersistence.persist(row, exercise: ex, sessionRowID: session.id,
             exerciseOrder: 1, setNumber: 1, distanceUnit: .km, repo: SessionSetRepository(dbManager: db))
 
         let count = try await rowCount(db, sessionID: session.id, exerciseID: ex.id)
