@@ -103,6 +103,27 @@ struct StorageGuard {
         return .fitted
     }
 
+    // MARK: - Delete all history
+
+    /// Deletes ALL session history (session + its child rows) in one transaction.
+    /// Keeps routines, custom exercises, the catalog, and the user profile.
+    func deleteAllHistory() async throws {
+        try await dbManager.transaction { db in
+            for sql in [
+                "DELETE FROM session_run_split;",
+                "DELETE FROM session_run;",
+                "DELETE FROM session_set;",
+                "DELETE FROM session_tag;",
+                "DELETE FROM session;",
+            ] {
+                let stmt = try prepare(db, sql)
+                defer { finalize(stmt) }
+                _ = try step(stmt)
+            }
+        }
+        try await dbManager.vacuum()
+    }
+
     // MARK: - Private: evict oldest session
 
     /// Deletes the single oldest session + its child rows.

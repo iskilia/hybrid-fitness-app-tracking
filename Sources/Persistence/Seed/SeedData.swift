@@ -123,14 +123,21 @@ private func exerciseUUID(_ id: Int) -> String {
     String(format: "00000000-0000-0000-0001-%012d", id)
 }
 
+enum SeedMuscle: Int {
+    case chest = 1, back = 2, lats = 3, shoulders = 4, biceps = 5, triceps = 6
+    case quads = 7, hamstrings = 8, glutes = 9, calves = 10
+    case core = 11, posteriorChain = 12, upperChest = 13
+    case obliques = 14, forearms = 15, hipFlexors = 16
+}
+
 private struct ExerciseSeed {
     let id: Int
     let name: String
     let abbr: String
     let equipmentID: Int
     let metricType: String       // REPS | TIME | DISTANCE | REPS_BODYWEIGHT
-    let primaryMuscles: [Int]    // muscle IDs
-    let secondaryMuscles: [Int]
+    let primaryMuscles: [SeedMuscle]
+    let secondaryMuscles: [SeedMuscle]
     var notes: String? = nil
 }
 
@@ -140,110 +147,110 @@ private func insertExercises(_ db: OpaquePointer) throws {
     let exercises: [ExerciseSeed] = [
         // ID 1 — Bench Press (screenshot: BNC, BARBELL · CHEST · TRICEPS)
         ExerciseSeed(id: 1,  name: "Bench Press",           abbr: "BNC", equipmentID: 1,
-                     metricType: "REPS",           primaryMuscles: [1],       secondaryMuscles: [6, 4]),
+                     metricType: "REPS",           primaryMuscles: [.chest],       secondaryMuscles: [.triceps, .shoulders]),
         // ID 2 — Back Squat (screenshot: SQT, BARBELL · QUADS · GLUTES)
         ExerciseSeed(id: 2,  name: "Back Squat",            abbr: "SQT", equipmentID: 1,
-                     metricType: "REPS",           primaryMuscles: [7],       secondaryMuscles: [9, 8]),
+                     metricType: "REPS",           primaryMuscles: [.quads],       secondaryMuscles: [.glutes, .hamstrings]),
         // ID 3 — Deadlift (screenshot: DLT, BARBELL · POSTERIOR CHAIN)
         ExerciseSeed(id: 3,  name: "Deadlift",              abbr: "DLT", equipmentID: 1,
-                     metricType: "REPS",           primaryMuscles: [12],      secondaryMuscles: [8, 9, 2]),
+                     metricType: "REPS",           primaryMuscles: [.posteriorChain],      secondaryMuscles: [.hamstrings, .glutes, .back]),
         // ID 4 — Overhead Press (screenshot: OHP, BARBELL · SHOULDERS · TRICEPS)
         ExerciseSeed(id: 4,  name: "Overhead Press",        abbr: "OHP", equipmentID: 1,
-                     metricType: "REPS",           primaryMuscles: [4],       secondaryMuscles: [6]),
+                     metricType: "REPS",           primaryMuscles: [.shoulders],       secondaryMuscles: [.triceps]),
         // ID 5 — Bent-over Row (screenshot: ROW, BARBELL · BACK · BICEPS)
         ExerciseSeed(id: 5,  name: "Bent-over Row",         abbr: "ROW", equipmentID: 1,
-                     metricType: "REPS",           primaryMuscles: [2],       secondaryMuscles: [5, 3]),
+                     metricType: "REPS",           primaryMuscles: [.back],       secondaryMuscles: [.biceps, .lats]),
         // ID 6 — Pull-up (screenshot: PUL, BODYWEIGHT · LATS · BICEPS)
         ExerciseSeed(id: 6,  name: "Pull-up",               abbr: "PUL", equipmentID: 3,
-                     metricType: "REPS_BODYWEIGHT", primaryMuscles: [3],      secondaryMuscles: [5]),
+                     metricType: "REPS_BODYWEIGHT", primaryMuscles: [.lats],      secondaryMuscles: [.biceps]),
         // ID 7 — Romanian Deadlift (screenshot: DLT / use RDL per task spec, BARBELL · HAMSTRINGS · GLUTES)
         ExerciseSeed(id: 7,  name: "Romanian Deadlift",     abbr: "RDL", equipmentID: 1,
-                     metricType: "REPS",           primaryMuscles: [8],       secondaryMuscles: [9, 12]),
+                     metricType: "REPS",           primaryMuscles: [.hamstrings],       secondaryMuscles: [.glutes, .posteriorChain]),
         // ID 8 — Incline DB Press (screenshot: BNC, DUMBBELL · UPPER CHEST)
         ExerciseSeed(id: 8,  name: "Incline DB Press",      abbr: "IDB", equipmentID: 2,
-                     metricType: "REPS",           primaryMuscles: [13],      secondaryMuscles: [1, 6]),
+                     metricType: "REPS",           primaryMuscles: [.upperChest],      secondaryMuscles: [.chest, .triceps]),
         // ID 9 — Front Squat
         ExerciseSeed(id: 9,  name: "Front Squat",           abbr: "FSQ", equipmentID: 1,
-                     metricType: "REPS",           primaryMuscles: [7],       secondaryMuscles: [9]),
+                     metricType: "REPS",           primaryMuscles: [.quads],       secondaryMuscles: [.glutes]),
         // ID 10 — Lat Pulldown
         ExerciseSeed(id: 10, name: "Lat Pulldown",          abbr: "LPD", equipmentID: 4,
-                     metricType: "REPS",           primaryMuscles: [3],       secondaryMuscles: [5]),
+                     metricType: "REPS",           primaryMuscles: [.lats],       secondaryMuscles: [.biceps]),
         // ID 11 — Cable Row
         ExerciseSeed(id: 11, name: "Cable Row",             abbr: "CRW", equipmentID: 4,
-                     metricType: "REPS",           primaryMuscles: [2],       secondaryMuscles: [5]),
+                     metricType: "REPS",           primaryMuscles: [.back],       secondaryMuscles: [.biceps]),
         // ID 12 — Leg Press
         ExerciseSeed(id: 12, name: "Leg Press",             abbr: "LGP", equipmentID: 5,
-                     metricType: "REPS",           primaryMuscles: [7],       secondaryMuscles: [9]),
+                     metricType: "REPS",           primaryMuscles: [.quads],       secondaryMuscles: [.glutes]),
         // ID 13 — Leg Curl
         ExerciseSeed(id: 13, name: "Leg Curl",              abbr: "LGC", equipmentID: 5,
-                     metricType: "REPS",           primaryMuscles: [8],       secondaryMuscles: []),
+                     metricType: "REPS",           primaryMuscles: [.hamstrings],       secondaryMuscles: []),
         // ID 14 — Leg Extension
         ExerciseSeed(id: 14, name: "Leg Extension",         abbr: "LGE", equipmentID: 5,
-                     metricType: "REPS",           primaryMuscles: [7],       secondaryMuscles: []),
+                     metricType: "REPS",           primaryMuscles: [.quads],       secondaryMuscles: []),
         // ID 15 — Calf Raise
         ExerciseSeed(id: 15, name: "Calf Raise",            abbr: "CLF", equipmentID: 5,
-                     metricType: "REPS",           primaryMuscles: [10],      secondaryMuscles: []),
+                     metricType: "REPS",           primaryMuscles: [.calves],      secondaryMuscles: []),
         // ID 16 — DB Curl
         ExerciseSeed(id: 16, name: "DB Curl",               abbr: "DBC", equipmentID: 2,
-                     metricType: "REPS",           primaryMuscles: [5],       secondaryMuscles: []),
+                     metricType: "REPS",           primaryMuscles: [.biceps],       secondaryMuscles: []),
         // ID 17 — Tricep Pushdown
         ExerciseSeed(id: 17, name: "Tricep Pushdown",       abbr: "TPD", equipmentID: 4,
-                     metricType: "REPS",           primaryMuscles: [6],       secondaryMuscles: []),
+                     metricType: "REPS",           primaryMuscles: [.triceps],       secondaryMuscles: []),
         // ID 18 — Hammer Curl
         ExerciseSeed(id: 18, name: "Hammer Curl",           abbr: "HMC", equipmentID: 2,
-                     metricType: "REPS",           primaryMuscles: [5],       secondaryMuscles: []),
+                     metricType: "REPS",           primaryMuscles: [.biceps],       secondaryMuscles: []),
         // ID 19 — Skullcrusher
         ExerciseSeed(id: 19, name: "Skullcrusher",          abbr: "SKL", equipmentID: 1,
-                     metricType: "REPS",           primaryMuscles: [6],       secondaryMuscles: []),
+                     metricType: "REPS",           primaryMuscles: [.triceps],       secondaryMuscles: []),
         // ID 20 — Lateral Raise
         ExerciseSeed(id: 20, name: "Lateral Raise",         abbr: "LAT", equipmentID: 2,
-                     metricType: "REPS",           primaryMuscles: [4],       secondaryMuscles: []),
+                     metricType: "REPS",           primaryMuscles: [.shoulders],       secondaryMuscles: []),
         // ID 21 — Face Pull
         ExerciseSeed(id: 21, name: "Face Pull",             abbr: "FPL", equipmentID: 4,
-                     metricType: "REPS",           primaryMuscles: [4],       secondaryMuscles: [2]),
+                     metricType: "REPS",           primaryMuscles: [.shoulders],       secondaryMuscles: [.back]),
         // ID 22 — Hip Thrust
         ExerciseSeed(id: 22, name: "Hip Thrust",            abbr: "HPT", equipmentID: 1,
-                     metricType: "REPS",           primaryMuscles: [9],       secondaryMuscles: [8]),
+                     metricType: "REPS",           primaryMuscles: [.glutes],       secondaryMuscles: [.hamstrings]),
         // ID 23 — Bulgarian Split Squat
         ExerciseSeed(id: 23, name: "Bulgarian Split Squat", abbr: "BSS", equipmentID: 2,
-                     metricType: "REPS",           primaryMuscles: [7],       secondaryMuscles: [9]),
+                     metricType: "REPS",           primaryMuscles: [.quads],       secondaryMuscles: [.glutes]),
         // ID 24 — Goblet Squat
         ExerciseSeed(id: 24, name: "Goblet Squat",          abbr: "GBS", equipmentID: 6,
-                     metricType: "REPS",           primaryMuscles: [7],       secondaryMuscles: [9, 11]),
+                     metricType: "REPS",           primaryMuscles: [.quads],       secondaryMuscles: [.glutes, .core]),
         // ID 25 — DB Bench
         ExerciseSeed(id: 25, name: "DB Bench",              abbr: "DBB", equipmentID: 2,
-                     metricType: "REPS",           primaryMuscles: [1],       secondaryMuscles: [6, 4]),
+                     metricType: "REPS",           primaryMuscles: [.chest],       secondaryMuscles: [.triceps, .shoulders]),
         // ID 26 — Push-up
         ExerciseSeed(id: 26, name: "Push-up",               abbr: "PSH", equipmentID: 3,
-                     metricType: "REPS_BODYWEIGHT", primaryMuscles: [1],      secondaryMuscles: [6, 4]),
+                     metricType: "REPS_BODYWEIGHT", primaryMuscles: [.chest],      secondaryMuscles: [.triceps, .shoulders]),
         // ID 27 — Dip
         ExerciseSeed(id: 27, name: "Dip",                   abbr: "DIP", equipmentID: 3,
-                     metricType: "REPS_BODYWEIGHT", primaryMuscles: [6, 1],   secondaryMuscles: [4]),
+                     metricType: "REPS_BODYWEIGHT", primaryMuscles: [.triceps, .chest],   secondaryMuscles: [.shoulders]),
         // ID 28 — Chin-up
         ExerciseSeed(id: 28, name: "Chin-up",               abbr: "CHN", equipmentID: 3,
-                     metricType: "REPS_BODYWEIGHT", primaryMuscles: [5, 3],   secondaryMuscles: [2]),
+                     metricType: "REPS_BODYWEIGHT", primaryMuscles: [.biceps, .lats],   secondaryMuscles: [.back]),
         // ID 29 — Plank
         ExerciseSeed(id: 29, name: "Plank",                 abbr: "PLK", equipmentID: 3,
-                     metricType: "TIME",            primaryMuscles: [11],     secondaryMuscles: []),
+                     metricType: "TIME",            primaryMuscles: [.core],     secondaryMuscles: []),
         // ID 30 — Russian Twist
         ExerciseSeed(id: 30, name: "Russian Twist",         abbr: "RST", equipmentID: 3,
-                     metricType: "REPS",            primaryMuscles: [11],     secondaryMuscles: []),
+                     metricType: "REPS",            primaryMuscles: [.core],     secondaryMuscles: []),
         // ID 31 — Wall Sit (TIME · BODYWEIGHT · QUADS · GLUTES)
         ExerciseSeed(id: 31, name: "Wall Sit",              abbr: "WS",  equipmentID: 3,
-                     metricType: "TIME",             primaryMuscles: [7],      secondaryMuscles: [9]),
+                     metricType: "TIME",             primaryMuscles: [.quads],      secondaryMuscles: [.glutes]),
         // ID 32 — Side Plank (TIME · BODYWEIGHT · OBLIQUES · CORE)
         ExerciseSeed(id: 32, name: "Side Plank",            abbr: "SPL", equipmentID: 3,
-                     metricType: "TIME",             primaryMuscles: [14],     secondaryMuscles: [11],
+                     metricType: "TIME",             primaryMuscles: [.obliques],     secondaryMuscles: [.core],
                      notes: "Log left and right sides separately if desired."),
         // ID 33 — Dead Hang (TIME · PULLUP BAR · FOREARMS · LATS)
         ExerciseSeed(id: 33, name: "Dead Hang",             abbr: "DH",  equipmentID: 9,
-                     metricType: "TIME",             primaryMuscles: [15],     secondaryMuscles: [3]),
+                     metricType: "TIME",             primaryMuscles: [.forearms],     secondaryMuscles: [.lats]),
         // ID 34 — L-Sit (TIME · BODYWEIGHT · CORE · HIP FLEXORS)
         ExerciseSeed(id: 34, name: "L-Sit",                 abbr: "LS",  equipmentID: 3,
-                     metricType: "TIME",             primaryMuscles: [11],     secondaryMuscles: [16]),
+                     metricType: "TIME",             primaryMuscles: [.core],     secondaryMuscles: [.hipFlexors]),
         // ID 35 — Run (DISTANCE · BODYWEIGHT · QUADS · HAMSTRINGS · GLUTES · CALVES)
         ExerciseSeed(id: 35, name: "Run",                   abbr: "RUN", equipmentID: 3,
-                     metricType: "DISTANCE",         primaryMuscles: [7],      secondaryMuscles: [8, 9, 10]),
+                     metricType: "DISTANCE",         primaryMuscles: [.quads],      secondaryMuscles: [.hamstrings, .glutes, .calves]),
     ]
 
     for ex in exercises {
@@ -255,14 +262,14 @@ private func insertExercises(_ db: OpaquePointer) throws {
             """
         try exec(db: db, sql: sql)
 
-        for muscleID in ex.primaryMuscles {
+        for muscle in ex.primaryMuscles {
             try exec(db: db, sql: """
-                INSERT INTO exercise_muscle (exercise_id, muscle_id, role) VALUES (\(ex.id), \(muscleID), 'PRIMARY');
+                INSERT INTO exercise_muscle (exercise_id, muscle_id, role) VALUES (\(ex.id), \(muscle.rawValue), 'PRIMARY');
                 """)
         }
-        for muscleID in ex.secondaryMuscles {
+        for muscle in ex.secondaryMuscles {
             try exec(db: db, sql: """
-                INSERT INTO exercise_muscle (exercise_id, muscle_id, role) VALUES (\(ex.id), \(muscleID), 'SECONDARY');
+                INSERT INTO exercise_muscle (exercise_id, muscle_id, role) VALUES (\(ex.id), \(muscle.rawValue), 'SECONDARY');
                 """)
         }
     }

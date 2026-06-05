@@ -148,6 +148,30 @@ struct RoutineRepository {
         }
     }
 
+    // MARK: - Hard-delete
+
+    /// Hard-deletes a routine and its child rows (routine_exercise, routine_run) in one transaction.
+    func delete(clientUUID: UUID) async throws {
+        try await dbManager.transaction { db in
+            let routineRowID = try routineRowID(db, clientUUID: clientUUID)
+
+            let delEx = try prepare(db, "DELETE FROM routine_exercise WHERE routine_id = ?;")
+            defer { finalize(delEx) }
+            bindInt(delEx, 1, routineRowID)
+            _ = try step(delEx)
+
+            let delRun = try prepare(db, "DELETE FROM routine_run WHERE routine_id = ?;")
+            defer { finalize(delRun) }
+            bindInt(delRun, 1, routineRowID)
+            _ = try step(delRun)
+
+            let delRoutine = try prepare(db, "DELETE FROM routine WHERE id = ?;")
+            defer { finalize(delRoutine) }
+            bindInt(delRoutine, 1, routineRowID)
+            _ = try step(delRoutine)
+        }
+    }
+
     // MARK: - Soft-delete
 
     func softDelete(id: UUID) async throws {

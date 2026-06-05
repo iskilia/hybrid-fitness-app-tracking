@@ -86,6 +86,15 @@ final class SettingsViewModel {
         maxDataMb = previousMaxDataMb              // revert picker; persist nothing
     }
 
+    func deleteAllHistory() async {
+        do {
+            try await storageGuard.deleteAllHistory()
+        } catch {
+            storageErrorMessage = "Couldn't delete history: \(error.localizedDescription)"
+        }
+        await refreshFooter()      // existing private method updates sessionCount + dbSizeBytes
+    }
+
     private func persistLimit(_ mb: Int) async {
         try? await profileRepo.upsert(weightUnit: weightUnit, distanceUnit: distanceUnit, maxDataMb: mb)
     }
