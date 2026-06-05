@@ -1,6 +1,5 @@
 import Foundation
 import Observation
-import SQLite3
 
 // MARK: - RunRoutineDetailViewModel
 
@@ -61,22 +60,7 @@ final class RunRoutineDetailViewModel {
             updatedAt: now
         )
         do {
-            try await dbManager.transaction { db in
-                let sql = """
-                    INSERT INTO routine_run
-                        (client_uuid, routine_id, run_template_id, sort_order, notes, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?);
-                    """
-                let stmt = try prepare(db, sql)
-                defer { finalize(stmt) }
-                bindUUID(stmt, 1, newRun.clientUUID)
-                bindInt(stmt, 2, newRun.routineID)
-                bindInt(stmt, 3, newRun.runTemplateID)
-                bindInt(stmt, 4, newRun.sortOrder)
-                bindText(stmt, 5, newRun.notes)
-                bindDate(stmt, 6, newRun.updatedAt)
-                _ = try step(stmt)
-            }
+            try await RoutineRepository(dbManager: dbManager).addRun(newRun)
             await load(routineID: routineID)
         } catch {
             errorMessage = error.localizedDescription
@@ -145,21 +129,8 @@ final class RunRoutineDetailViewModel {
             }
 
             // Detect removed slots: find template IDs in the prior session not in today's routine
-            let sessionRunRows = try await dbManager.read { db in
-                let sql = "SELECT id, run_template_id FROM session_run WHERE session_id = ?;"
-                let stmt = try prepare(db, sql)
-                defer { finalize(stmt) }
-                bindInt(stmt, 1, session.id)
-                var rows: [(id: Int, templateID: Int)] = []
-                while try step(stmt) {
-                    if let tid = columnInt(stmt, 1) {
-                        rows.append((id: columnInt(stmt, 0) ?? 0, templateID: tid))
-                    }
-                }
-                return rows
-            }
-
-            let removedTemplateIDs = Set(sessionRunRows.map { $0.templateID }).subtracting(currentTemplateIDs)
+            let priorTemplateIDs = try await sessionRunRepo.templateIDs(forSession: session.id)
+            let removedTemplateIDs = Set(priorTemplateIDs).subtracting(currentTemplateIDs)
             if !removedTemplateIDs.isEmpty {
                 let templateRepo = RunTemplateRepository(dbManager: dbManager)
                 let allTemplates = try await templateRepo.listAll()

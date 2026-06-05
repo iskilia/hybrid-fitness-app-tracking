@@ -523,6 +523,14 @@ struct RoutineRepository {
         }
     }
 
+    // MARK: - Append a single run to a routine
+
+    func addRun(_ run: RoutineRun) async throws {
+        try await dbManager.transaction { db in
+            try insertRoutineRun(db, run)
+        }
+    }
+
     // MARK: - Summary (exercise + run counts for a routine)
 
     func summary(routineID: UUID) async throws -> (exerciseCount: Int, runCount: Int) {
