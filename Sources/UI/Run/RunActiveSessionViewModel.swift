@@ -42,6 +42,17 @@ final class RunActiveSessionViewModel {
     var distanceText: String = ""
     var hrText: String = ""
 
+    // MARK: - Manual pace entry (MM:SS wheel)
+
+    var paceMinutes: Int = 0   // UI range 0…30
+    var paceSeconds: Int = 0   // UI range 0…59
+
+    /// User-picked pace, nil when left at 0:00 (then the computed pace is used).
+    var manualPaceSecPerKm: Int? {
+        let total = paceMinutes * 60 + paceSeconds
+        return total > 0 ? total : nil
+    }
+
     // MARK: - UI state
 
     var isPaused = false
@@ -135,7 +146,7 @@ final class RunActiveSessionViewModel {
                 id: run.clientUUID,
                 distanceKm: distanceKm,
                 durationSec: elapsedSec,
-                avgPaceSecPerKm: paceSecPerKm,
+                avgPaceSecPerKm: manualPaceSecPerKm ?? paceSecPerKm,
                 avgHrBpm: hrBpm
             )
             try await SessionRepository(dbManager: dbManager).finish(id: sess.clientUUID)
@@ -243,6 +254,12 @@ extension RunActiveSessionViewModel {
 
     var paceFormatted: String {
         guard let p = paceSecPerKm else { return "--:--" }
+        return String(format: "%d:%02d", p / 60, p % 60)
+    }
+
+    /// Tile display: manual pick if set, else the computed pace.
+    var paceDisplay: String {
+        guard let p = manualPaceSecPerKm else { return paceFormatted }
         return String(format: "%d:%02d", p / 60, p % 60)
     }
 

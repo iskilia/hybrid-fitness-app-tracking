@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @State private var viewModel: SettingsViewModel
     @State private var showDeleteHistoryConfirm = false
+    @Environment(\.router) private var router
 
     init(dbManager: DatabaseManager) {
         _viewModel = State(initialValue: SettingsViewModel(dbManager: dbManager))
@@ -131,7 +132,10 @@ struct SettingsView: View {
             titleVisibility: .visible
         ) {
             Button("Delete all history", role: .destructive) {
-                Task { await viewModel.deleteAllHistory() }
+                Task {
+                    await viewModel.deleteAllHistory()
+                    if viewModel.storageErrorMessage == nil { router?.popToRoot() }
+                }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
