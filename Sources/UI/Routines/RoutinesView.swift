@@ -45,7 +45,8 @@ struct RoutinesView: View {
                     routine: routine,
                     lastPerformedText: viewModel.lastPerformedText(for: routine),
                     subtitleText: viewModel.subtitleText(for: routine),
-                    onStart: { router?.push(.routineDetail(routine.clientUUID, routine.type)) }
+                    onStart: { router?.push(.routineDetail(routine.clientUUID, routine.type)) },
+                    onOpen:  { router?.push(.routineDetail(routine.clientUUID, routine.type)) }
                 )
                 .listRowInsets(EdgeInsets())
                 .listRowBackground(Color.clear)

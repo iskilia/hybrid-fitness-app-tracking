@@ -14,8 +14,12 @@ struct ExerciseHistoryView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppSpacing.xl) {
                 headerSection
-                chartSection
-                sessionListSection
+                if viewModel.topSets.isEmpty {
+                    emptyState
+                } else {
+                    chartSection
+                    sessionListSection
+                }
             }
             .padding(.horizontal, AppSpacing.lg)
             .padding(.top, AppSpacing.lg)
@@ -44,6 +48,26 @@ struct ExerciseHistoryView: View {
         }
     }
 
+    // MARK: - Empty state
+
+    private var emptyState: some View {
+        VStack(spacing: AppSpacing.sm) {
+            Image(systemName: "chart.line.uptrend.xyaxis")
+                .font(.system(size: 32))
+                .foregroundStyle(AppColor.textSecondary)
+            Text("No history yet.")
+                .font(AppFont.bodyBold)
+                .foregroundStyle(AppColor.textSecondary)
+            Text("Complete a session to start tracking.")
+                .font(AppFont.body)
+                .foregroundStyle(AppColor.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(AppSpacing.xl)
+        .background(AppColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
+    }
+
     // MARK: - Chart
 
     private var isTimeExercise: Bool {
@@ -56,12 +80,7 @@ struct ExerciseHistoryView: View {
                 .font(AppFont.caption)
                 .foregroundStyle(AppColor.textSecondary)
 
-            if viewModel.topSets.isEmpty {
-                Text("No history yet.")
-                    .font(AppFont.body)
-                    .foregroundStyle(AppColor.textSecondary)
-                    .frame(height: 160)
-            } else if isTimeExercise {
+            if isTimeExercise {
                 Chart(viewModel.topSets) { point in
                     LineMark(
                         x: .value("Date", point.date),

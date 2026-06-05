@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SQLite3
 
 // MARK: - LiftRoutineDetailEntry
 
@@ -19,6 +20,7 @@ struct LiftRoutineDetailEntry: Identifiable, Sendable {
 final class LiftRoutineDetailViewModel {
     var routine: Routine?
     var entries: [LiftRoutineDetailEntry] = []
+    var runEntries: [(run: RoutineRun, template: RunTemplate, intervals: [RunIntervalBlock])] = []
     var isLoading = false
     var errorMessage: String?
     var lastExecutionSummary: LastExecutionSummary? = nil
@@ -28,8 +30,10 @@ final class LiftRoutineDetailViewModel {
     private let exerciseRepo: ExerciseRepository
     private let sessionSetRepo: SessionSetRepository
     private let sessionRepo: SessionRepository
+    private let dbManager: DatabaseManager
 
     init(dbManager: DatabaseManager) {
+        self.dbManager = dbManager
         self.routineRepo = RoutineRepository(dbManager: dbManager)
         self.exerciseRepo = ExerciseRepository(dbManager: dbManager)
         self.sessionSetRepo = SessionSetRepository(dbManager: dbManager)
@@ -74,8 +78,56 @@ final class LiftRoutineDetailViewModel {
                 ))
             }
             self.entries = built
+
+            // Load run entries for mixed routines
+            if let routineInt = r?.id {
+                let rawRuns = try await fetchRoutineRuns(routineIntID: routineInt)
+                let templateRepo = RunTemplateRepository(dbManager: dbManager)
+                var builtRuns: [(run: RoutineRun, template: RunTemplate, intervals: [RunIntervalBlock])] = []
+                for entry in rawRuns {
+                    let templates = try await templateRepo.listAll()
+                    guard let tmpl = templates.first(where: { $0.id == entry.runTemplateID }) else { continue }
+                    let blocks = try await templateRepo.intervals(for: tmpl.clientUUID)
+                    builtRuns.append((run: entry, template: tmpl, intervals: blocks))
+                }
+                self.runEntries = builtRuns
+            }
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - Private helpers
+
+    private func fetchRoutineRuns(routineIntID: Int) async throws -> [RoutineRun] {
+        try await dbManager.read { db in
+            let sql = """
+                SELECT id, client_uuid, routine_id, run_template_id, sort_order, notes, updated_at
+                FROM routine_run
+                WHERE routine_id = ?
+                ORDER BY sort_order ASC;
+                """
+            let stmt = try prepare(db, sql)
+            defer { finalize(stmt) }
+            bindInt(stmt, 1, routineIntID)
+            var result: [RoutineRun] = []
+            while try step(stmt) {
+                guard
+                    let uuidStr = columnText(stmt, 1),
+                    let uuid = UUID(uuidString: uuidStr),
+                    let updatedAt = columnDate(stmt, 6)
+                else { continue }
+                result.append(RoutineRun(
+                    id: columnInt(stmt, 0) ?? 0,
+                    clientUUID: uuid,
+                    routineID: columnInt(stmt, 2) ?? 0,
+                    runTemplateID: columnInt(stmt, 3) ?? 0,
+                    sortOrder: columnInt(stmt, 4) ?? 0,
+                    notes: columnText(stmt, 5),
+                    updatedAt: updatedAt
+                ))
+            }
+            return result
         }
     }
 

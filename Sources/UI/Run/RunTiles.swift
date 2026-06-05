@@ -1,23 +1,21 @@
 import SwiftUI
 
 struct DistanceTile: View {
-    let distanceKm: Double
-    let onIncrement: () -> Void
+    @Binding var distanceText: String
 
     var body: some View {
         VStack(spacing: AppSpacing.xs) {
             Text("DISTANCE")
                 .font(AppFont.caption)
                 .foregroundStyle(AppColor.textSecondary)
-            Text(String(format: "%.2f", distanceKm))
+            TextField("0.00", text: $distanceText)
                 .font(AppFont.metricSmall)
                 .foregroundStyle(AppColor.textPrimary)
+                .keyboardType(.decimalPad)
+                .multilineTextAlignment(.center)
             Text("KM")
                 .font(AppFont.caption)
                 .foregroundStyle(AppColor.textSecondary)
-            Button("+0.1", action: onIncrement)
-                .font(AppFont.captionMono)
-                .foregroundStyle(AppColor.accent)
         }
         .frame(maxWidth: .infinity)
         .padding(AppSpacing.md)
@@ -52,29 +50,23 @@ struct MetricTile: View {
 }
 
 struct HRTile: View {
-    let hrBpm: Int?
+    @Binding var hrText: String
     let targetMin: Int?
     let targetMax: Int?
-    let onDecrement: () -> Void
-    let onIncrement: () -> Void
 
     var body: some View {
         VStack(spacing: AppSpacing.xs) {
             Text("HR")
                 .font(AppFont.caption)
                 .foregroundStyle(AppColor.textSecondary)
-            Text(hrBpm.map { String($0) } ?? "--")
+            TextField("--", text: $hrText)
                 .font(AppFont.metricSmall)
                 .foregroundStyle(AppColor.textPrimary)
+                .keyboardType(.numberPad)
+                .multilineTextAlignment(.center)
             Text("BPM")
                 .font(AppFont.caption)
                 .foregroundStyle(AppColor.textSecondary)
-            HStack(spacing: AppSpacing.sm) {
-                Button("−", action: onDecrement)
-                Button("+", action: onIncrement)
-            }
-            .font(AppFont.captionMono)
-            .foregroundStyle(AppColor.accent)
         }
         .frame(maxWidth: .infinity)
         .padding(AppSpacing.md)

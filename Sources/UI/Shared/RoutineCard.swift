@@ -6,6 +6,7 @@ struct RoutineCard: View {
     let lastPerformedText: String
     let subtitleText: String
     let onStart: () -> Void
+    var onOpen: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.sm) {
@@ -45,6 +46,8 @@ struct RoutineCard: View {
         .padding(AppSpacing.lg)
         .background(AppColor.surface)
         .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
+        .contentShape(Rectangle())
+        .onTapGesture { onOpen?() }
     }
 }
 

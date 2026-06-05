@@ -17,6 +17,7 @@ struct LiftRoutineDetailView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     headerSection
                     exerciseListSection
+                    runListSection
                     lastExecutionSection
                 }
                 .padding(.bottom, 100)  // space for START button
@@ -42,7 +43,7 @@ private extension LiftRoutineDetailView {
             if let routine = viewModel.routine {
                 HStack(spacing: AppSpacing.md) {
                     BadgeView(kind: routine.type)
-                    Text("\(viewModel.entries.count) EXERCISES")
+                    Text("\(viewModel.entries.count) EXERCISES\(viewModel.runEntries.isEmpty ? "" : " · \(viewModel.runEntries.count) RUNS")")
                         .font(AppFont.caption)
                         .foregroundStyle(AppColor.textSecondary)
                         .textCase(.uppercase)
@@ -114,6 +115,18 @@ private extension LiftRoutineDetailView {
             .foregroundStyle(AppColor.textSecondary)
     }
 
+    var runListSection: some View {
+        VStack(spacing: 0) {
+            ForEach(viewModel.runEntries, id: \.run.id) { entry in
+                RunRow(template: entry.template, intervals: entry.intervals)
+                    .padding(.horizontal, AppSpacing.lg)
+                Divider()
+                    .background(AppColor.divider)
+                    .padding(.leading, AppSpacing.lg + 56 + AppSpacing.md)
+            }
+        }
+    }
+
     var lastExecutionSection: some View {
         LastExecutionCard(
             summary: viewModel.lastExecutionSummary,
@@ -133,7 +146,8 @@ private extension LiftRoutineDetailView {
             Task {
                 guard let db = dbManager else { return }
                 let sessionRepo = SessionRepository(dbManager: db)
-                let session = try? await sessionRepo.start(routineID: routineID, type: .lift)
+                let type = viewModel.routine?.type ?? .lift
+                let session = try? await sessionRepo.start(routineID: routineID, type: type)
                 if let s = session {
                     router?.push(.session(s.clientUUID))
                 }

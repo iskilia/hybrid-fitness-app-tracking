@@ -18,13 +18,29 @@ struct LiftActiveSessionView: View {
                 VStack(alignment: .leading, spacing: AppSpacing.lg) {
                     timerHeader
                     ForEach(Array(viewModel.cards.enumerated()), id: \.element.id) { index, card in
-                        ExerciseCardView(
-                            card: card,
-                            exerciseOrder: index + 1,
+                        let abbrev: String = {
+                            let a = card.exercise.abbreviation
+                            return a.isEmpty ? String(card.exercise.name.prefix(3)).uppercased() : a
+                        }()
+                        LiftBlockCard(
+                            blockNumber: index + 1,
+                            exerciseName: card.exercise.name,
+                            thumbnailText: abbrev,
+                            metricType: card.exercise.metricType,
                             distanceUnit: viewModel.distanceUnit,
-                            onCommitRow: { row in
-                                viewModel.persistSet(row, in: card, exerciseOrder: index + 1)
-                            }
+                            targetSets: card.routineExercise.targetSets,
+                            targetRepMin: card.routineExercise.targetRepMin,
+                            targetRepMax: card.routineExercise.targetRepMax,
+                            notes: card.routineExercise.notes,
+                            rows: card.rows,
+                            prevDisplays: prevDisplays(for: card),
+                            isExpanded: viewModel.expandedCardID == card.id,
+                            isDone: viewModel.doneCardIDs.contains(card.id),
+                            onTap: { viewModel.toggleExpand(card) },
+                            onMarkAllDone: { Task { await viewModel.markCardDone(card, exerciseOrder: index + 1) } },
+                            onNextBlock: { viewModel.advanceToNextCard(after: card) },
+                            onAddSet: { viewModel.addSet(to: card) },
+                            onRowCommit: { row in viewModel.persistSet(row, in: card, exerciseOrder: index + 1) }
                         )
                     }
                 }
@@ -93,6 +109,7 @@ struct LiftActiveSessionView: View {
         VStack(spacing: AppSpacing.sm) {
             Button {
                 Task {
+                    await viewModel.persistAllRows()
                     let done = await viewModel.finishAndCheckStorage()
                     if done { router?.popToRoot() }
                 }
@@ -120,6 +137,26 @@ struct LiftActiveSessionView: View {
         .padding(.horizontal, AppSpacing.lg)
         .padding(.bottom, AppSpacing.xl)
         .background(AppColor.background.ignoresSafeArea(edges: .bottom))
+    }
+
+    // MARK: - Prev display hints
+
+    private func prevDisplays(for card: ExerciseCardState) -> [String?] {
+        card.rows.enumerated().map { index, row in
+            guard index > 0 else { return nil }
+            let prev = card.rows[index - 1]
+            if card.exercise.metricType == .time {
+                guard !prev.durationSecsText.isEmpty else { return nil }
+                return "\(prev.durationSecsText)s"
+            } else if card.exercise.metricType == .distance {
+                guard !prev.distanceText.isEmpty else { return nil }
+                let unit = viewModel.distanceUnit == .km ? "km" : "mi"
+                return "\(prev.distanceText)\(unit)"
+            } else {
+                guard !prev.weightText.isEmpty || !prev.repsText.isEmpty else { return nil }
+                return "\(prev.weightText.isEmpty ? "—" : prev.weightText)×\(prev.repsText.isEmpty ? "—" : prev.repsText)"
+            }
+        }
     }
 
     // MARK: - Elapsed timer

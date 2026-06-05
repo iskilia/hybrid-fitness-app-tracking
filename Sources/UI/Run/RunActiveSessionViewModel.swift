@@ -37,6 +37,11 @@ final class RunActiveSessionViewModel {
         dataSource.currentPaceSecPerKm(elapsedSec: elapsedSec)
     }
 
+    // MARK: - Typed entry state
+
+    var distanceText: String = ""
+    var hrText: String = ""
+
     // MARK: - UI state
 
     var isPaused = false
@@ -114,7 +119,14 @@ final class RunActiveSessionViewModel {
         }
     }
 
+    /// Parse typed text fields into the data source. Must be called before reading distanceKm/hrBpm.
+    func commitTypedMetrics() {
+        if let d = Double(distanceText) { distanceKm = d }
+        hrBpm = Int(hrText)
+    }
+
     func finish() async {
+        commitTypedMetrics()
         timerTask?.cancel()
         isFinished = true
         guard let run = sessionRun, let sess = session else { return }
