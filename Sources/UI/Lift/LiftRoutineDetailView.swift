@@ -3,7 +3,6 @@ import SwiftUI
 struct LiftRoutineDetailView: View {
     let routineID: UUID
     @State private var viewModel: LiftRoutineDetailViewModel
-    @State private var showExerciseLibrary = false
     @Environment(\.databaseManager) private var dbManager
     @Environment(\.router) private var router
 
@@ -27,18 +26,9 @@ struct LiftRoutineDetailView: View {
             startButton
         }
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { addExerciseButton }
         .task {
             await viewModel.load(routineID: routineID)
             await viewModel.loadLastExecution(routineID: routineID)
-        }
-        .sheet(isPresented: $showExerciseLibrary) {
-            if let db = dbManager {
-                ExerciseLibraryView(dbManager: db, onSelect: { _ in
-                    showExerciseLibrary = false
-                    // T5 will wire adding exercise to routine
-                })
-            }
         }
     }
 }
@@ -166,17 +156,6 @@ private extension LiftRoutineDetailView {
         )
     }
 
-    @ToolbarContentBuilder
-    var addExerciseButton: some ToolbarContent {
-        ToolbarItem(placement: .topBarTrailing) {
-            Button {
-                showExerciseLibrary = true
-            } label: {
-                Image(systemName: "plus")
-                    .foregroundStyle(AppColor.textPrimary)
-            }
-        }
-    }
 }
 
 #Preview {

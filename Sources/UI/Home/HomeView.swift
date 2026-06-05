@@ -44,14 +44,6 @@ struct HomeView: View {
     private var weekMetricsSection: some View {
         HStack(spacing: 0) {
             MetricChip(label: "WEEK", value: viewModel.sessionCount, unit: "sessions")
-            Divider()
-                .frame(height: 40)
-                .padding(.horizontal, AppSpacing.md)
-            MetricChip(label: "VOLUME", value: viewModel.formattedVolume, unit: "t")
-            Divider()
-                .frame(height: 40)
-                .padding(.horizontal, AppSpacing.md)
-            MetricChip(label: "DISTANCE", value: viewModel.formattedDistance, unit: "km")
         }
         .padding(AppSpacing.lg)
         .background(AppColor.surface)

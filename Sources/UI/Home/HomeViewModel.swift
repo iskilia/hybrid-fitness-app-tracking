@@ -95,20 +95,6 @@ final class HomeViewModel {
         }
     }
 
-    var formattedVolume: String {
-        let kg = stats?.totalTonnageKg ?? 0
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.maximumFractionDigits = 1
-        formatter.minimumFractionDigits = 0
-        return formatter.string(from: NSNumber(value: kg / 1000)) ?? "0"
-    }
-
-    var formattedDistance: String {
-        let km = stats?.totalDistanceKm ?? 0
-        return String(format: "%.1f", km)
-    }
-
     var sessionCount: String {
         "\(stats?.sessionCount ?? 0)"
     }

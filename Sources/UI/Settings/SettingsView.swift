@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @State private var viewModel: SettingsViewModel
+    @State private var showDeleteHistoryConfirm = false
 
     init(dbManager: DatabaseManager) {
         _viewModel = State(initialValue: SettingsViewModel(dbManager: dbManager))
@@ -12,6 +13,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: AppSpacing.xl) {
                 unitsSection
                 dataLimitSection
+                deleteHistorySection
                 footer
             }
             .padding(AppSpacing.lg)
@@ -104,6 +106,37 @@ struct SettingsView: View {
 
     private var limitOptions: [Int] {
         Array(stride(from: 10, through: 200, by: 10))
+    }
+
+    private var deleteHistorySection: some View {
+        Button(role: .destructive) {
+            showDeleteHistoryConfirm = true
+        } label: {
+            HStack {
+                Text("Delete all history")
+                    .font(AppFont.body)
+                Spacer()
+                Image(systemName: "trash")
+            }
+            .padding(AppSpacing.lg)
+            .frame(maxWidth: .infinity)
+            .background(AppColor.surface)
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.lg))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Color.red)
+        .confirmationDialog(
+            "Delete all history?",
+            isPresented: $showDeleteHistoryConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete all history", role: .destructive) {
+                Task { await viewModel.deleteAllHistory() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes every logged session. Your routines and exercises are kept. This can't be undone.")
+        }
     }
 
     private var footer: some View {
