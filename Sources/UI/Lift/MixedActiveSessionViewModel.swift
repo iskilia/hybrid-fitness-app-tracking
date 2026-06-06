@@ -32,6 +32,9 @@ final class MixedBlockState: Identifiable {
     var runCadenceText: String
     /// When this run block first became active; used to compute per-block duration.
     var startedAt: Date?
+    /// Per-block duration frozen at completion, so re-persisting a done block doesn't
+    /// re-measure `now − startedAt` and absorb later blocks' wall-clock time.
+    var elapsedSec: Int?
     // shared
     var isDone: Bool
 
@@ -240,6 +243,8 @@ final class MixedActiveSessionViewModel {
     }
 
     func markRunBlockDone(_ block: MixedBlockState) async {
+        // Freeze the measured duration at completion so later re-persists don't grow it.
+        block.elapsedSec = block.startedAt.map { max(0, Int(Date().timeIntervalSince($0))) } ?? 0
         await writeRunRow(block)
         block.isDone = true
         advanceToNextBlock(after: block)
@@ -266,12 +271,14 @@ final class MixedActiveSessionViewModel {
         let distanceKm = Double(block.runDistanceText)
         let avgPaceSec = block.manualPaceSecPerKm
         let avgHr = Int(block.runHrText)
-        let duration = block.startedAt.map { max(0, Int(Date().timeIntervalSince($0))) } ?? 0
+        // Reuse the value frozen at completion; for an in-progress (not-done) block measure live.
+        // max(0, …) guards a backwards system-clock jump (NTP/manual change).
+        let duration = block.elapsedSec ?? block.startedAt.map { max(0, Int(Date().timeIntervalSince($0))) } ?? 0
 
         if let run = block.sessionRun {
             try? await sessionRunRepo.finish(
                 id: run.clientUUID,
-                distanceKm: distanceKm ?? 0.0,
+                distanceKm: distanceKm,
                 durationSec: duration,
                 avgPaceSecPerKm: avgPaceSec,
                 avgHrBpm: avgHr

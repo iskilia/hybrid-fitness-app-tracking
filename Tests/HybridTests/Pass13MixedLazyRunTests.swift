@@ -91,4 +91,35 @@ final class Pass13MixedLazyRunTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(d, 118, "per-block duration must reflect startedAt (~120s)")
         XCTAssertLessThanOrEqual(d, 135, "per-block duration must be bounded near 120s")
     }
+
+    /// Regression: a completed block's duration must freeze at completion, not grow when
+    /// `persistAll` re-writes the row at saveAndExit/finish (else it absorbs later blocks' time).
+    func testPerBlockDurationFrozenOnRepersist() async throws {
+        let db = try makeTempDB()
+        let (session, vm) = try await makeMixedRunSession(db)
+        guard let runBlock = vm.blocks.first(where: { $0.kind == .run }) else {
+            return XCTFail("mixed VM must build a run block")
+        }
+        runBlock.runDistanceText = "3"
+        runBlock.startedAt = Date().addingTimeInterval(-120)   // opened ~2 min ago
+
+        await vm.markRunBlockDone(runBlock)
+
+        // Simulate 10 more minutes of wall clock elapsing (e.g. spent on later blocks)
+        // before the session is finished and persistAll re-writes the done row.
+        runBlock.startedAt = Date().addingTimeInterval(-720)
+        await vm.persistAll()
+
+        let duration = try await db.read { handle -> Int? in
+            let stmt = try Hybrid.prepare(handle,
+                "SELECT duration_secs FROM session_run WHERE session_id = ?;")
+            defer { Hybrid.finalize(stmt) }
+            Hybrid.bindInt(stmt, 1, session.id)
+            guard try Hybrid.step(stmt) else { return nil }
+            return sqlite3_column_type(stmt, 0) != SQLITE_NULL ? Int(sqlite3_column_int64(stmt, 0)) : nil
+        }
+        guard let d = duration else { return XCTFail("duration_secs must be persisted") }
+        XCTAssertLessThanOrEqual(d, 135,
+            "duration must stay frozen at completion (~120s), not grow on re-persist")
+    }
 }

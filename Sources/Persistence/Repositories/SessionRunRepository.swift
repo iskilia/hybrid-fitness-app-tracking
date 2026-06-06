@@ -18,7 +18,7 @@ struct SessionRunRepository {
 
     func finish(
         id: UUID,
-        distanceKm: Double,
+        distanceKm: Double?,
         durationSec: Int,
         avgPaceSecPerKm: Int?,
         avgHrBpm: Int?
