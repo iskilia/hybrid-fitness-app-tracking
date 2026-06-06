@@ -159,6 +159,25 @@ struct SessionRunRepository {
         }
     }
 
+    // MARK: - Run-template IDs recorded in a session
+
+    /// All `run_template_id`s that have a `session_run` row for this session
+    /// (one per slot run; may repeat if a template appears more than once).
+    /// Order/duplicates aren't load-bearing — the sole caller wraps this in a
+    /// `Set` for removed-slot detection.
+    func templateIDs(forSession sessionID: Int) async throws -> [Int] {
+        try await dbManager.read { db in
+            let stmt = try prepare(db, "SELECT run_template_id FROM session_run WHERE session_id = ?;")
+            defer { finalize(stmt) }
+            bindInt(stmt, 1, sessionID)
+            var ids: [Int] = []
+            while try step(stmt) {
+                if let tid = columnInt(stmt, 0) { ids.append(tid) }
+            }
+            return ids
+        }
+    }
+
     // MARK: - Delete
 
     func delete(id: UUID) async throws {
