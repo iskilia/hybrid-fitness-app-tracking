@@ -23,12 +23,18 @@ final class MixedBlockState: Identifiable {
     // RUN
     let runTemplate: RunTemplate?
     let routineRun: RoutineRun?
+    let runOrder: Int          // 1-based slot order for run blocks (0 for lift)
     var sessionRun: SessionRun?
     var runDistanceText: String
     var paceMinutes: Int   // MM:SS wheel, MIN 0…30
     var paceSeconds: Int   // MM:SS wheel, SEC 0…59
     var runHrText: String
     var runCadenceText: String
+    /// When this run block first became active; used to compute per-block duration.
+    var startedAt: Date?
+    /// Per-block duration frozen at completion, so re-persisting a done block doesn't
+    /// re-measure `now − startedAt` and absorb later blocks' wall-clock time.
+    var elapsedSec: Int?
     // shared
     var isDone: Bool
 
@@ -48,12 +54,14 @@ final class MixedBlockState: Identifiable {
         prevDisplays: [String?] = [],
         runTemplate: RunTemplate? = nil,
         routineRun: RoutineRun? = nil,
+        runOrder: Int = 0,
         sessionRun: SessionRun? = nil,
         runDistanceText: String = "",
         paceMinutes: Int = 0,
         paceSeconds: Int = 0,
         runHrText: String = "",
         runCadenceText: String = "",
+        startedAt: Date? = nil,
         isDone: Bool = false
     ) {
         self.id = id
@@ -65,12 +73,14 @@ final class MixedBlockState: Identifiable {
         self.prevDisplays = prevDisplays
         self.runTemplate = runTemplate
         self.routineRun = routineRun
+        self.runOrder = runOrder
         self.sessionRun = sessionRun
         self.runDistanceText = runDistanceText
         self.paceMinutes = paceMinutes
         self.paceSeconds = paceSeconds
         self.runHrText = runHrText
         self.runCadenceText = runCadenceText
+        self.startedAt = startedAt
         self.isDone = isDone
     }
 }
@@ -178,36 +188,18 @@ final class MixedActiveSessionViewModel {
             let rawRuns = try await routineRepo.runs(routineIntID: routine.id)
             let templateRepo = RunTemplateRepository(dbManager: dbManager)
             let templatesByID = Dictionary(uniqueKeysWithValues: try await templateRepo.listAll().map { ($0.id, $0) })
+            // Build run-block STATE only — the session_run row is created lazily on first
+            // write (markRunBlockDone / persistAll) so abandoning the screen leaves no orphan rows.
             var runBlocks: [MixedBlockState] = []
             var runOrder = 1
             for routineRun in rawRuns {
                 guard let tmpl = templatesByID[routineRun.runTemplateID] else { continue }
-
-                // Create SessionRun row up front
-                let newRun = SessionRun(
-                    id: 0,
-                    clientUUID: UUID(),
-                    sessionID: s.id,
-                    runTemplateID: tmpl.id,
-                    runOrder: runOrder,
-                    actualDistanceKm: nil,
-                    durationSecs: nil,
-                    avgPaceSecs: nil,
-                    avgHR: nil,
-                    maxHR: nil,
-                    targetHRMin: tmpl.hrBpmMin,
-                    targetHRMax: tmpl.hrBpmMax,
-                    notes: nil,
-                    updatedAt: Date()
-                )
-                try await sessionRunRepo.append(newRun)
-
                 runBlocks.append(MixedBlockState(
                     kind: .run,
                     sortOrder: routineRun.sortOrder,
                     runTemplate: tmpl,
                     routineRun: routineRun,
-                    sessionRun: newRun
+                    runOrder: runOrder
                 ))
                 runOrder += 1
             }
@@ -218,6 +210,7 @@ final class MixedActiveSessionViewModel {
             self.blocks = sortedLift + sortedRun
 
             activeBlockID = blocks.first(where: { !$0.isDone })?.id
+            touchStartForActiveRun()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -227,6 +220,15 @@ final class MixedActiveSessionViewModel {
 
     func expand(_ block: MixedBlockState) {
         activeBlockID = block.id
+        touchStartForActiveRun()
+    }
+
+    /// Stamps `startedAt` on the active run block the first time it opens (per-block timer start).
+    private func touchStartForActiveRun() {
+        guard let id = activeBlockID,
+              let b = blocks.first(where: { $0.id == id }),
+              b.kind == .run, b.startedAt == nil else { return }
+        b.startedAt = Date()
     }
 
     func markLiftBlockDone(_ block: MixedBlockState) async {
@@ -241,22 +243,9 @@ final class MixedActiveSessionViewModel {
     }
 
     func markRunBlockDone(_ block: MixedBlockState) async {
-        guard let run = block.sessionRun else {
-            block.isDone = true
-            advanceToNextBlock(after: block)
-            return
-        }
-        let distanceKm = Double(block.runDistanceText) ?? 0.0
-        let avgPaceSec = block.manualPaceSecPerKm
-        let avgHr = Int(block.runHrText)
-        try? await sessionRunRepo.finish(
-            id: run.clientUUID,
-            distanceKm: distanceKm,
-            // Mixed sessions have no per-block timer yet, so run duration is not captured here.
-            durationSec: 0,
-            avgPaceSecPerKm: avgPaceSec,
-            avgHrBpm: avgHr
-        )
+        // Freeze the measured duration at completion so later re-persists don't grow it.
+        block.elapsedSec = block.startedAt.map { max(0, Int(Date().timeIntervalSince($0))) } ?? 0
+        await writeRunRow(block)
         block.isDone = true
         advanceToNextBlock(after: block)
     }
@@ -265,6 +254,55 @@ final class MixedActiveSessionViewModel {
         guard let idx = blocks.firstIndex(where: { $0.id == block.id }) else { return }
         let next = blocks[(idx + 1)...].first(where: { !$0.isDone })
         activeBlockID = next?.id
+        touchStartForActiveRun()
+    }
+
+    /// True if the user entered any run metric (so persistAll should write even if not marked done).
+    private func runBlockHasData(_ block: MixedBlockState) -> Bool {
+        !block.runDistanceText.isEmpty
+            || block.manualPaceSecPerKm != nil
+            || !block.runHrText.isEmpty
+    }
+
+    /// Lazily creates the session_run row on first write, or updates it thereafter.
+    /// Persists per-block duration measured from `startedAt`.
+    private func writeRunRow(_ block: MixedBlockState) async {
+        guard let s = session, let tmpl = block.runTemplate else { return }
+        let distanceKm = Double(block.runDistanceText)
+        let avgPaceSec = block.manualPaceSecPerKm
+        let avgHr = Int(block.runHrText)
+        // Reuse the value frozen at completion; for an in-progress (not-done) block measure live.
+        // max(0, …) guards a backwards system-clock jump (NTP/manual change).
+        let duration = block.elapsedSec ?? block.startedAt.map { max(0, Int(Date().timeIntervalSince($0))) } ?? 0
+
+        if let run = block.sessionRun {
+            try? await sessionRunRepo.finish(
+                id: run.clientUUID,
+                distanceKm: distanceKm,
+                durationSec: duration,
+                avgPaceSecPerKm: avgPaceSec,
+                avgHrBpm: avgHr
+            )
+        } else {
+            let newRun = SessionRun(
+                id: 0,
+                clientUUID: UUID(),
+                sessionID: s.id,
+                runTemplateID: tmpl.id,
+                runOrder: block.runOrder,
+                actualDistanceKm: distanceKm,
+                durationSecs: duration,
+                avgPaceSecs: avgPaceSec,
+                avgHR: avgHr,
+                maxHR: nil,
+                targetHRMin: tmpl.hrBpmMin,
+                targetHRMax: tmpl.hrBpmMax,
+                notes: nil,
+                updatedAt: Date()
+            )
+            try? await sessionRunRepo.append(newRun)
+            block.sessionRun = newRun
+        }
     }
 
     // MARK: - Persist all
@@ -276,18 +314,10 @@ final class MixedActiveSessionViewModel {
                     await persistLiftRow(row, in: block, exerciseOrder: index + 1)
                 }
             } else {
-                guard let run = block.sessionRun else { continue }
-                let distanceKm = Double(block.runDistanceText) ?? 0.0
-                let avgPaceSec = block.manualPaceSecPerKm
-                let avgHr = Int(block.runHrText)
-                try? await sessionRunRepo.finish(
-                    id: run.clientUUID,
-                    distanceKm: distanceKm,
-                    // Mixed sessions have no per-block timer yet, so run duration is not captured here.
-                    durationSec: 0,
-                    avgPaceSecPerKm: avgPaceSec,
-                    avgHrBpm: avgHr
-                )
+                // Skip untouched run blocks (never opened with data, not done) so no orphan rows.
+                if block.sessionRun != nil || block.isDone || runBlockHasData(block) {
+                    await writeRunRow(block)
+                }
             }
         }
     }
