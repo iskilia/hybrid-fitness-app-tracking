@@ -64,4 +64,34 @@ final class Pass11RunRoutineDeSqlTests: XCTestCase {
         let ids = try await sessionRunRepo.templateIDs(forSession: session.id)
         XCTAssertEqual(ids, [tmplID], "templateIDs must return the recorded run's template id")
     }
+
+    /// Locks the removed-slot Set semantics the VM relies on: `templateIDs` preserves
+    /// duplicates when a template appears twice, and `Set(...).subtracting(current)`
+    /// collapses them — reporting the slot removed iff it's absent from today's routine.
+    func testTemplateIDsDedupRemovedSlot() async throws {
+        let db = try makeTempDB()
+        let session = try await SessionRepository(dbManager: db).start(routineID: nil, type: .run)
+        let sessionRunRepo = SessionRunRepository(dbManager: db)
+        let tmplID = try await anyRunTemplateID(db)
+
+        for order in 1...2 {
+            try await sessionRunRepo.append(SessionRun(
+                id: 0, clientUUID: UUID(), sessionID: session.id,
+                runTemplateID: tmplID, runOrder: order,
+                actualDistanceKm: nil, durationSecs: nil, avgPaceSecs: nil,
+                avgHR: nil, maxHR: nil, targetHRMin: nil, targetHRMax: nil,
+                notes: nil, updatedAt: Date()
+            ))
+        }
+
+        let ids = try await sessionRunRepo.templateIDs(forSession: session.id)
+        XCTAssertEqual(ids.count, 2, "templateIDs must preserve duplicate template rows")
+
+        // Template absent from today's routine → exactly one removed slot.
+        XCTAssertEqual(Set(ids).subtracting([]), [tmplID],
+            "Set.subtracting must collapse duplicates to a single removed slot")
+        // Template still present today → not reported removed.
+        XCTAssertTrue(Set(ids).subtracting([tmplID]).isEmpty,
+            "a template still in the routine must not be flagged removed")
+    }
 }
