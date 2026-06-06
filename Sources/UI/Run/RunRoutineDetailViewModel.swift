@@ -13,10 +13,16 @@ final class RunRoutineDetailViewModel {
     var lastExecutionSummary: LastExecutionSummary? = nil
     var isLoadingLastExecution: Bool = false
 
-    private let dbManager: DatabaseManager
+    private let routineRepo: RoutineRepository
+    private let templateRepo: RunTemplateRepository
+    private let sessionRepo: SessionRepository
+    private let sessionRunRepo: SessionRunRepository
 
     init(dbManager: DatabaseManager) {
-        self.dbManager = dbManager
+        self.routineRepo    = RoutineRepository(dbManager: dbManager)
+        self.templateRepo   = RunTemplateRepository(dbManager: dbManager)
+        self.sessionRepo    = SessionRepository(dbManager: dbManager)
+        self.sessionRunRepo = SessionRunRepository(dbManager: dbManager)
     }
 
     // MARK: - Load
@@ -25,12 +31,10 @@ final class RunRoutineDetailViewModel {
         isLoading = true
         defer { isLoading = false }
         do {
-            let routineRepo = RoutineRepository(dbManager: dbManager)
             routine = try await routineRepo.get(id: routineID)
 
             guard let r = routine else { return }
 
-            let templateRepo = RunTemplateRepository(dbManager: dbManager)
             let runEntries = try await routineRepo.runs(routineIntID: r.id)
             let templatesByID = Dictionary(uniqueKeysWithValues: try await templateRepo.listAll().map { ($0.id, $0) })
             var built: [(run: RoutineRun, template: RunTemplate, intervals: [RunIntervalBlock])] = []
@@ -60,7 +64,7 @@ final class RunRoutineDetailViewModel {
             updatedAt: now
         )
         do {
-            try await RoutineRepository(dbManager: dbManager).addRun(newRun)
+            try await routineRepo.addRun(newRun)
             await load(routineID: routineID)
         } catch {
             errorMessage = error.localizedDescription
@@ -71,8 +75,7 @@ final class RunRoutineDetailViewModel {
 
     func startSession(routineID: UUID) async -> UUID? {
         do {
-            let repo = SessionRepository(dbManager: dbManager)
-            let session = try await repo.start(routineID: routineID, type: .run)
+            let session = try await sessionRepo.start(routineID: routineID, type: .run)
             return session.clientUUID
         } catch {
             errorMessage = error.localizedDescription
@@ -91,7 +94,6 @@ final class RunRoutineDetailViewModel {
             if let loaded = routine {
                 r = loaded
             } else {
-                let routineRepo = RoutineRepository(dbManager: dbManager)
                 guard let fetched = try await routineRepo.get(id: routineID) else {
                     lastExecutionSummary = nil
                     return
@@ -99,7 +101,6 @@ final class RunRoutineDetailViewModel {
                 r = fetched
             }
 
-            let sessionRepo = SessionRepository(dbManager: dbManager)
             guard let session = try await sessionRepo.lastCompletedSession(forRoutineID: r.id) else {
                 lastExecutionSummary = nil
                 return
@@ -107,8 +108,6 @@ final class RunRoutineDetailViewModel {
 
             let finishedAt = session.finishedAt!
             let totalDurationSecs = Int(finishedAt.timeIntervalSince(session.startedAt))
-
-            let sessionRunRepo = SessionRunRepository(dbManager: dbManager)
 
             // Build TopSetLine for each slot in the current routine order
             var lines: [LastExecutionSummary.TopSetLine] = []
@@ -132,7 +131,6 @@ final class RunRoutineDetailViewModel {
             let priorTemplateIDs = try await sessionRunRepo.templateIDs(forSession: session.id)
             let removedTemplateIDs = Set(priorTemplateIDs).subtracting(currentTemplateIDs)
             if !removedTemplateIDs.isEmpty {
-                let templateRepo = RunTemplateRepository(dbManager: dbManager)
                 let allTemplates = try await templateRepo.listAll()
                 let templateByID = Dictionary(uniqueKeysWithValues: allTemplates.map { ($0.id, $0) })
 
