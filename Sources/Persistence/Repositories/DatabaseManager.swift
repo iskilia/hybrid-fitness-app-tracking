@@ -21,15 +21,51 @@ public actor DatabaseManager {
         self.dbFileURL = url
         let path = url?.path ?? ":memory:"
         var ptr: OpaquePointer?
+        // NOFOLLOW: refuse to open through a symlink. PRIVATECACHE: no shared page cache.
         let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX
+                  | SQLITE_OPEN_NOFOLLOW | SQLITE_OPEN_PRIVATECACHE
         guard sqlite3_open_v2(path, &ptr, flags, nil) == SQLITE_OK, let opened = ptr else {
             let msg = ptr.map { String(cString: sqlite3_errmsg($0)) } ?? "open failed"
             sqlite3_close_v2(ptr)
             throw DatabaseError.openFailed(msg)
         }
         self.db = opened
+        Self.harden(opened)
         try migrate(opened)
         try seedIfEmpty(opened)
+        if let url { Self.protect(url) }
+    }
+
+    // MARK: - Hardening (F3 — keep SQL inside this one file)
+
+    /// Removes SQLite's only filesystem-reaching primitive so that no statement —
+    /// even an injected one — can open or read another file inside the sandbox.
+    private static func harden(_ db: OpaquePointer) {
+        // Extension loading is already impossible: iOS's system SQLite is compiled
+        // with SQLITE_OMIT_LOAD_EXTENSION, so load_extension() is not available.
+        //
+        // Deny ATTACH of any named file. VACUUM performs an internal attach with an
+        // empty filename, which must stay allowed, so we only block non-empty names.
+        sqlite3_set_authorizer(db, { _, action, arg3, _, _, _ in
+            if action == SQLITE_ATTACH, let arg3, strlen(arg3) > 0 {
+                return SQLITE_DENY
+            }
+            return SQLITE_OK
+        }, nil)
+    }
+
+    // MARK: - Data protection (F1)
+
+    /// Marks the DB file and its WAL siblings as protected so the bytes are
+    /// encrypted at rest while the device is locked.
+    private static func protect(_ url: URL) {
+        for path in [url.path, url.path + "-wal", url.path + "-shm"] {
+            guard FileManager.default.fileExists(atPath: path) else { continue }
+            try? FileManager.default.setAttributes(
+                [.protectionKey: FileProtectionType.completeUnlessOpen],
+                ofItemAtPath: path
+            )
+        }
     }
 
     deinit {
