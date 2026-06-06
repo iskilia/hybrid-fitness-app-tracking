@@ -218,6 +218,14 @@ private struct BlockCard: View {
     let onNextBlock: () -> Void
     let onMarkRunDone: () -> Void
 
+    @State private var showPaceSheet = false
+
+    /// Formatted manual pace for the tile (e.g. "4:35"), or a placeholder.
+    private var paceDisplay: String {
+        guard let p = block.manualPaceSecPerKm else { return "—:—" }
+        return String(format: "%d:%02d", p / 60, p % 60)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Collapsed header — always visible
@@ -238,6 +246,12 @@ private struct BlockCard: View {
                 .stroke(isExpanded ? AppColor.accent : Color.clear, lineWidth: AppStroke.thin)
         )
         .padding(.horizontal, AppSpacing.lg)
+        .sheet(isPresented: $showPaceSheet) {
+            PacePickerSheet(
+                minutes: $block.paceMinutes,
+                seconds: $block.paceSeconds
+            ) { showPaceSheet = false }
+        }
     }
 
     // MARK: Collapsed header
@@ -406,15 +420,18 @@ private struct BlockCard: View {
                     Text("PACE")
                         .font(AppFont.caption)
                         .foregroundStyle(AppColor.textSecondary)
-                    HStack(alignment: .lastTextBaseline, spacing: 2) {
-                        TextField("—:—", text: $block.runPaceText)
-                            .font(AppFont.captionMono)
-                            .keyboardType(.numbersAndPunctuation)
-                            .frame(width: 48)
-                        Text("/km")
-                            .font(AppFont.caption)
-                            .foregroundStyle(AppColor.textSecondary)
+                    Button { showPaceSheet = true } label: {
+                        HStack(alignment: .lastTextBaseline, spacing: 2) {
+                            Text(paceDisplay)
+                                .font(AppFont.captionMono)
+                                .foregroundStyle(AppColor.textPrimary)
+                                .frame(minWidth: 48, alignment: .leading)
+                            Text("/km")
+                                .font(AppFont.caption)
+                                .foregroundStyle(AppColor.textSecondary)
+                        }
                     }
+                    .buttonStyle(.plain)
                 }
 
                 if let zMin = block.runTemplate?.hrZoneMin, let zMax = block.runTemplate?.hrZoneMax {

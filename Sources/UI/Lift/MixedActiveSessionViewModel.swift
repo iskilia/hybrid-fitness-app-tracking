@@ -25,11 +25,18 @@ final class MixedBlockState: Identifiable {
     let routineRun: RoutineRun?
     var sessionRun: SessionRun?
     var runDistanceText: String
-    var runPaceText: String
+    var paceMinutes: Int   // MM:SS wheel, MIN 0…30
+    var paceSeconds: Int   // MM:SS wheel, SEC 0…59
     var runHrText: String
     var runCadenceText: String
     // shared
     var isDone: Bool
+
+    /// User-picked pace, nil when left at 0:00.
+    var manualPaceSecPerKm: Int? {
+        let total = paceMinutes * 60 + paceSeconds
+        return total > 0 ? total : nil
+    }
 
     init(
         id: UUID = UUID(),
@@ -43,7 +50,8 @@ final class MixedBlockState: Identifiable {
         routineRun: RoutineRun? = nil,
         sessionRun: SessionRun? = nil,
         runDistanceText: String = "",
-        runPaceText: String = "",
+        paceMinutes: Int = 0,
+        paceSeconds: Int = 0,
         runHrText: String = "",
         runCadenceText: String = "",
         isDone: Bool = false
@@ -59,7 +67,8 @@ final class MixedBlockState: Identifiable {
         self.routineRun = routineRun
         self.sessionRun = sessionRun
         self.runDistanceText = runDistanceText
-        self.runPaceText = runPaceText
+        self.paceMinutes = paceMinutes
+        self.paceSeconds = paceSeconds
         self.runHrText = runHrText
         self.runCadenceText = runCadenceText
         self.isDone = isDone
@@ -238,8 +247,7 @@ final class MixedActiveSessionViewModel {
             return
         }
         let distanceKm = Double(block.runDistanceText) ?? 0.0
-        let paceText = block.runPaceText  // e.g. "4:35"
-        let avgPaceSec = parsePaceSecs(paceText)
+        let avgPaceSec = block.manualPaceSecPerKm
         let avgHr = Int(block.runHrText)
         try? await sessionRunRepo.finish(
             id: run.clientUUID,
@@ -270,7 +278,7 @@ final class MixedActiveSessionViewModel {
             } else {
                 guard let run = block.sessionRun else { continue }
                 let distanceKm = Double(block.runDistanceText) ?? 0.0
-                let avgPaceSec = parsePaceSecs(block.runPaceText)
+                let avgPaceSec = block.manualPaceSecPerKm
                 let avgHr = Int(block.runHrText)
                 try? await sessionRunRepo.finish(
                     id: run.clientUUID,
@@ -347,14 +355,5 @@ final class MixedActiveSessionViewModel {
         } catch {
             errorMessage = "Couldn't save set: \(error.localizedDescription)"
         }
-    }
-
-    private func parsePaceSecs(_ text: String) -> Int? {
-        // Expects "M:SS" format
-        let parts = text.split(separator: ":").map { String($0) }
-        guard parts.count == 2,
-              let minutes = Int(parts[0]),
-              let seconds = Int(parts[1]) else { return nil }
-        return minutes * 60 + seconds
     }
 }
