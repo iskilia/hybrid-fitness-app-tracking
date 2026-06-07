@@ -141,22 +141,7 @@ struct ExerciseHistoryView: View {
                     )
                     .foregroundStyle(AppColor.accent)
                 }
-                .chartXAxis {
-                    AxisMarks(values: .automatic(desiredCount: 4)) { value in
-                        AxisGridLine()
-                        AxisValueLabel(format: .dateTime.month(.abbreviated).day())
-                    }
-                }
-                .chartYAxis {
-                    AxisMarks { value in
-                        AxisGridLine()
-                        AxisValueLabel()
-                    }
-                }
-                .chartScrollableAxes(.horizontal)
-                .chartXVisibleDomain(length: range.visibleDuration)
-                .chartScrollPosition(x: $scrollX)
-                .frame(height: 180)
+                .scrollableHistoryDomain(length: range.visibleDuration, position: $scrollX)
             } else {
                 Chart(viewModel.topSets) { point in
                     LineMark(
@@ -170,22 +155,7 @@ struct ExerciseHistoryView: View {
                     )
                     .foregroundStyle(AppColor.accent)
                 }
-                .chartXAxis {
-                    AxisMarks(values: .automatic(desiredCount: 4)) { value in
-                        AxisGridLine()
-                        AxisValueLabel(format: .dateTime.month(.abbreviated).day())
-                    }
-                }
-                .chartYAxis {
-                    AxisMarks { value in
-                        AxisGridLine()
-                        AxisValueLabel()
-                    }
-                }
-                .chartScrollableAxes(.horizontal)
-                .chartXVisibleDomain(length: range.visibleDuration)
-                .chartScrollPosition(x: $scrollX)
-                .frame(height: 180)
+                .scrollableHistoryDomain(length: range.visibleDuration, position: $scrollX)
             }
         }
     }
@@ -233,5 +203,38 @@ struct ExerciseHistoryView: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "EEE MMM d"
         return formatter.string(from: date)
+    }
+}
+
+/// Shared axis, scroll, and frame config for the history charts. Keeps the
+/// time / non-time chart branches from drifting apart.
+private struct ScrollableHistoryDomain: ViewModifier {
+    let length: TimeInterval
+    @Binding var position: Date
+
+    func body(content: Content) -> some View {
+        content
+            .chartXAxis {
+                AxisMarks(values: .automatic(desiredCount: 4)) { value in
+                    AxisGridLine()
+                    AxisValueLabel(format: .dateTime.month(.abbreviated).day())
+                }
+            }
+            .chartYAxis {
+                AxisMarks { value in
+                    AxisGridLine()
+                    AxisValueLabel()
+                }
+            }
+            .chartScrollableAxes(.horizontal)
+            .chartXVisibleDomain(length: length)
+            .chartScrollPosition(x: $position)
+            .frame(height: 180)
+    }
+}
+
+private extension View {
+    func scrollableHistoryDomain(length: TimeInterval, position: Binding<Date>) -> some View {
+        modifier(ScrollableHistoryDomain(length: length, position: position))
     }
 }
