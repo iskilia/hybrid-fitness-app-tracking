@@ -46,6 +46,36 @@ final class Pass15HistoryRangeTests: XCTestCase {
         return s
     }
 
+    /// Resolves a seeded TIME-metric exercise (id + uuid) for timed-history tests.
+    private func anyTimeExercise() async throws -> (id: Int, uuid: UUID) {
+        try await db.read { handle in
+            let stmt = try Hybrid.prepare(handle,
+                "SELECT id, client_uuid FROM exercise WHERE metric_type = 'TIME' AND is_custom = 0 LIMIT 1;")
+            defer { Hybrid.finalize(stmt) }
+            guard try Hybrid.step(stmt),
+                  let uuidStr = Hybrid.columnText(stmt, 1),
+                  let uuid = UUID(uuidString: uuidStr)
+            else { throw DatabaseError.notFound }
+            return (Int(sqlite3_column_int64(stmt, 0)), uuid)
+        }
+    }
+
+    /// Creates a completed lift session holding one timed set per entry in `durations`.
+    @discardableResult
+    private func completedTimedSession(durations: [Int], exerciseRowID: Int) async throws -> Session {
+        let s = try await sessions.start(routineID: nil, type: .lift)
+        for (i, dur) in durations.enumerated() {
+            try await sets.append(SessionSet(
+                id: 0, clientUUID: UUID(), sessionID: s.id, exerciseID: exerciseRowID,
+                exerciseOrder: 0, setNumber: i + 1, setType: .working,
+                weightKg: nil, reps: nil, durationSecs: dur, distanceM: nil,
+                rpe: nil, completedAt: nil, notes: nil, updatedAt: Date()
+            ))
+        }
+        try await sessions.finish(id: s.clientUUID)
+        return s
+    }
+
     /// Backdates a session's started_at to `date` (started_at is stored as epoch secs).
     private func backdate(_ session: Session, to date: Date) async throws {
         let epoch = Int64(date.timeIntervalSince1970)
@@ -82,5 +112,28 @@ final class Pass15HistoryRangeTests: XCTestCase {
 
         let unbounded = try await sets.historyByExercise(exerciseID: benchPressUUID, monthsBack: nil)
         XCTAssertEqual(unbounded.count, 2, "monthsBack: nil must include the old session")
+    }
+
+    /// topDurationPerSession returns one row per session (the session's max duration),
+    /// newest first, dated on the session's started_at — the shared date source that
+    /// keeps the timed history chart in step with the weighted one.
+    func testTopDurationPerSessionMaxPerSessionDatedOnStartedAt() async throws {
+        let ex = try await anyTimeExercise()
+
+        let old = try await completedTimedSession(durations: [30, 60, 45], exerciseRowID: ex.id)
+        _ = try await completedTimedSession(durations: [90, 20], exerciseRowID: ex.id)
+
+        // Make the first session strictly older so ordering is deterministic.
+        let oldDate = Date().addingTimeInterval(-10 * 86_400)
+        try await backdate(old, to: oldDate)
+
+        let all = try await sets.topDurationPerSession(exerciseID: ex.uuid, limit: nil)
+        XCTAssertEqual(all.map(\.durationSecs), [90, 60],
+            "newest first; each row is the session's max duration")
+        XCTAssertEqual(all[1].sessionDate.timeIntervalSince1970, oldDate.timeIntervalSince1970,
+            accuracy: 1, "row date must be the session's started_at, not a set timestamp")
+
+        let capped = try await sets.topDurationPerSession(exerciseID: ex.uuid, limit: 1)
+        XCTAssertEqual(capped.count, 1, "a non-nil limit must still cap")
     }
 }

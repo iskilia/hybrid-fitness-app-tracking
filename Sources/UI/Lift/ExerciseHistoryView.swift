@@ -18,16 +18,22 @@ enum HistoryRange: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Width of the visible chart window, in seconds.
-    var visibleDuration: TimeInterval {
-        let day: TimeInterval = 86_400
+    /// Calendar span of the visible window, subtracted from the anchor (newest
+    /// session) to find the window's left edge. Calendar arithmetic keeps the
+    /// edges on true boundaries across variable month lengths and leap years.
+    private var span: (component: Calendar.Component, value: Int) {
         switch self {
-        case .week:     return 7 * day
-        case .month:    return 30 * day
-        case .quarter:  return 91 * day
-        case .year:     return 365 * day
-        case .twoYears: return 730 * day
+        case .week:     return (.day, 7)
+        case .month:    return (.month, 1)
+        case .quarter:  return (.month, 3)
+        case .year:     return (.year, 1)
+        case .twoYears: return (.year, 2)
         }
+    }
+
+    /// Left edge of the visible window ending at `anchor`.
+    func windowStart(endingAt anchor: Date, calendar: Calendar = .current) -> Date {
+        calendar.date(byAdding: span.component, value: -span.value, to: anchor) ?? anchor
     }
 }
 
@@ -46,7 +52,13 @@ struct ExerciseHistoryView: View {
     /// keeping the default view non-empty even if the last workout is old.
     private func anchorScroll() {
         guard let newest = viewModel.topSets.last?.date else { return }
-        scrollX = newest.addingTimeInterval(-range.visibleDuration)
+        scrollX = range.windowStart(endingAt: newest)
+    }
+
+    /// Visible window width in seconds, derived from the calendar-anchored window.
+    private var visibleDuration: TimeInterval {
+        guard let newest = viewModel.topSets.last?.date else { return 7 * 86_400 }
+        return newest.timeIntervalSince(range.windowStart(endingAt: newest))
     }
 
     var body: some View {
@@ -141,7 +153,7 @@ struct ExerciseHistoryView: View {
                     )
                     .foregroundStyle(AppColor.accent)
                 }
-                .scrollableHistoryDomain(length: range.visibleDuration, position: $scrollX)
+                .scrollableHistoryDomain(length: visibleDuration, position: $scrollX)
             } else {
                 Chart(viewModel.topSets) { point in
                     LineMark(
@@ -155,7 +167,7 @@ struct ExerciseHistoryView: View {
                     )
                     .foregroundStyle(AppColor.accent)
                 }
-                .scrollableHistoryDomain(length: range.visibleDuration, position: $scrollX)
+                .scrollableHistoryDomain(length: visibleDuration, position: $scrollX)
             }
         }
     }

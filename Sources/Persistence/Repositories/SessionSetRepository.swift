@@ -156,6 +156,50 @@ struct SessionSetRepository {
         }
     }
 
+    // MARK: - Top duration per session
+
+    /// Best (max) `duration_secs` per completed session, dated on the session's
+    /// `started_at` — mirrors `topSetPerSession` so timed and weighted history
+    /// charts share one date source. Pass `limit: nil` to return every session.
+    func topDurationPerSession(exerciseID: UUID, limit: Int? = 12) async throws -> [(sessionDate: Date, durationSecs: Int)] {
+        try await dbManager.read { db in
+            let exerciseRowID = try resolveExerciseID(db, uuid: exerciseID)
+
+            let sql = """
+                SELECT s.started_at, ss.duration_secs
+                FROM session_set ss
+                JOIN session s ON s.id = ss.session_id
+                WHERE ss.exercise_id = ?
+                  AND s.status = 'COMPLETED'
+                  AND s.deleted_at IS NULL
+                  AND ss.duration_secs IS NOT NULL
+                  AND ss.duration_secs = (
+                      SELECT MAX(ss2.duration_secs)
+                      FROM session_set ss2
+                      WHERE ss2.session_id = ss.session_id
+                        AND ss2.exercise_id = ss.exercise_id
+                        AND ss2.duration_secs IS NOT NULL
+                  )
+                GROUP BY ss.session_id
+                ORDER BY s.started_at DESC
+                \(limit != nil ? "LIMIT ?;" : ";")
+                """
+            let stmt = try prepare(db, sql)
+            defer { finalize(stmt) }
+            bindInt(stmt, 1, exerciseRowID)
+            if let limit { bindInt(stmt, 2, limit) }
+            var result: [(sessionDate: Date, durationSecs: Int)] = []
+            while try step(stmt) {
+                guard
+                    let date = columnDate(stmt, 0),
+                    let dur = columnInt(stmt, 1)
+                else { continue }
+                result.append((sessionDate: date, durationSecs: dur))
+            }
+            return result
+        }
+    }
+
     // MARK: - Private helpers
 
     private func setSelectSQL() -> String {
