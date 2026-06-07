@@ -1,13 +1,52 @@
 import SwiftUI
 import Charts
 
+/// How much past data the history chart spans. The selection sets the chart's
+/// visible time window; the user scrolls horizontally to see older windows.
+enum HistoryRange: String, CaseIterable, Identifiable {
+    case week, month, quarter, year, twoYears
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .week:     return "1W"
+        case .month:    return "1M"
+        case .quarter:  return "1Q"
+        case .year:     return "1Y"
+        case .twoYears: return "2Y"
+        }
+    }
+
+    /// Width of the visible chart window, in seconds.
+    var visibleDuration: TimeInterval {
+        let day: TimeInterval = 86_400
+        switch self {
+        case .week:     return 7 * day
+        case .month:    return 30 * day
+        case .quarter:  return 91 * day
+        case .year:     return 365 * day
+        case .twoYears: return 730 * day
+        }
+    }
+}
+
 struct ExerciseHistoryView: View {
     let exerciseID: UUID
     @State private var viewModel: ExerciseHistoryViewModel
+    @State private var range: HistoryRange = .week
+    @State private var scrollX: Date = .now
 
     init(exerciseID: UUID, dbManager: DatabaseManager) {
         self.exerciseID = exerciseID
         self._viewModel = State(initialValue: ExerciseHistoryViewModel(exerciseID: exerciseID, dbManager: dbManager))
+    }
+
+    /// Anchors the visible window so its right edge sits at the newest session,
+    /// keeping the default view non-empty even if the last workout is old.
+    private func anchorScroll() {
+        guard let newest = viewModel.topSets.last?.date else { return }
+        scrollX = newest.addingTimeInterval(-range.visibleDuration)
     }
 
     var body: some View {
@@ -27,6 +66,8 @@ struct ExerciseHistoryView: View {
         .background(AppColor.background)
         .navigationBarTitleDisplayMode(.inline)
         .task { await viewModel.load() }
+        .onChange(of: viewModel.topSets.count) { anchorScroll() }
+        .onChange(of: range) { anchorScroll() }
     }
 
     // MARK: - Header
@@ -76,9 +117,16 @@ struct ExerciseHistoryView: View {
 
     private var chartSection: some View {
         VStack(alignment: .leading, spacing: AppSpacing.sm) {
-            Text(isTimeExercise ? "TOP-SET SECS · LAST 12 SESSIONS" : "TOP-SET KG · LAST 12 SESSIONS")
+            Text("\(isTimeExercise ? "TOP-SET SECS" : "TOP-SET KG") · \(range.label)")
                 .font(AppFont.caption)
                 .foregroundStyle(AppColor.textSecondary)
+
+            Picker("Range", selection: $range) {
+                ForEach(HistoryRange.allCases) { r in
+                    Text(r.label).tag(r)
+                }
+            }
+            .pickerStyle(.segmented)
 
             if isTimeExercise {
                 Chart(viewModel.topSets) { point in
@@ -105,6 +153,9 @@ struct ExerciseHistoryView: View {
                         AxisValueLabel()
                     }
                 }
+                .chartScrollableAxes(.horizontal)
+                .chartXVisibleDomain(length: range.visibleDuration)
+                .chartScrollPosition(x: $scrollX)
                 .frame(height: 180)
             } else {
                 Chart(viewModel.topSets) { point in
@@ -131,6 +182,9 @@ struct ExerciseHistoryView: View {
                         AxisValueLabel()
                     }
                 }
+                .chartScrollableAxes(.horizontal)
+                .chartXVisibleDomain(length: range.visibleDuration)
+                .chartScrollPosition(x: $scrollX)
                 .frame(height: 180)
             }
         }

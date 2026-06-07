@@ -36,7 +36,7 @@ final class ExerciseHistoryViewModel {
 
             if exercise?.metricType == .time {
                 // For timed exercises, compute the best (max) duration_secs per completed session.
-                let allSets = try await sessionSetRepo.historyByExercise(exerciseID: exerciseID, monthsBack: 12)
+                let allSets = try await sessionSetRepo.historyByExercise(exerciseID: exerciseID, monthsBack: nil)
                 // Group by session and take the max duration per session.
                 var bySession: [Int: (date: Date, duration: Int)] = [:]
                 for s in allSets {
@@ -53,10 +53,9 @@ final class ExerciseHistoryViewModel {
                 }
                 self.topSets = bySession.values
                     .sorted { $0.date < $1.date }
-                    .suffix(12)
                     .map { TopSetPoint(date: $0.date, weightKg: 0, reps: 0, durationSecs: $0.duration) }
             } else {
-                let raw = try await sessionSetRepo.topSetPerSession(exerciseID: exerciseID, limit: 12)
+                let raw = try await sessionSetRepo.topSetPerSession(exerciseID: exerciseID, limit: nil)
                 // topSetPerSession returns newest first; reverse for chronological chart display
                 self.topSets = raw.reversed().map {
                     TopSetPoint(date: $0.sessionDate, weightKg: $0.weightKg, reps: $0.reps, durationSecs: nil)
