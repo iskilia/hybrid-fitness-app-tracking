@@ -83,23 +83,25 @@ struct SessionSetRepository {
 
     // MARK: - History by exercise (last N months across completed sessions)
 
-    func historyByExercise(exerciseID: UUID, monthsBack: Int = 12) async throws -> [SessionSet] {
+    /// Pass `monthsBack: nil` to drop the lookback cutoff and return all history.
+    func historyByExercise(exerciseID: UUID, monthsBack: Int? = 12) async throws -> [SessionSet] {
         try await dbManager.read { db in
             let exerciseRowID = try resolveExerciseID(db, uuid: exerciseID)
-            let cutoff = Calendar.current.date(byAdding: .month, value: -monthsBack, to: Date()) ?? Date()
+            let cutoff = monthsBack.map {
+                Calendar.current.date(byAdding: .month, value: -$0, to: Date()) ?? Date()
+            }
 
             let sql = setSelectSQL() + """
                  JOIN session s ON s.id = ss.session_id
                  WHERE ss.exercise_id = ?
                    AND s.status = 'COMPLETED'
                    AND s.deleted_at IS NULL
-                   AND s.started_at >= ?
-                 ORDER BY s.started_at DESC, ss.set_number ASC;
+                \(cutoff != nil ? "   AND s.started_at >= ?\n" : "") ORDER BY s.started_at DESC, ss.set_number ASC;
                 """
             let stmt = try prepare(db, sql)
             defer { finalize(stmt) }
             bindInt(stmt, 1, exerciseRowID)
-            bindDate(stmt, 2, cutoff)
+            if let cutoff { bindDate(stmt, 2, cutoff) }
             var result: [SessionSet] = []
             while try step(stmt) {
                 result.append(try setFromStmt(stmt))
@@ -110,7 +112,8 @@ struct SessionSetRepository {
 
     // MARK: - Top set per session
 
-    func topSetPerSession(exerciseID: UUID, limit: Int = 12) async throws -> [(sessionDate: Date, weightKg: Double, reps: Int)] {
+    /// Pass `limit: nil` to drop the row cap and return every session's top set.
+    func topSetPerSession(exerciseID: UUID, limit: Int? = 12) async throws -> [(sessionDate: Date, weightKg: Double, reps: Int)] {
         try await dbManager.read { db in
             let exerciseRowID = try resolveExerciseID(db, uuid: exerciseID)
 
@@ -134,12 +137,12 @@ struct SessionSetRepository {
                   )
                 GROUP BY ss.session_id
                 ORDER BY s.started_at DESC
-                LIMIT ?;
+                \(limit != nil ? "LIMIT ?;" : ";")
                 """
             let stmt = try prepare(db, sql)
             defer { finalize(stmt) }
             bindInt(stmt, 1, exerciseRowID)
-            bindInt(stmt, 2, limit)
+            if let limit { bindInt(stmt, 2, limit) }
             var result: [(sessionDate: Date, weightKg: Double, reps: Int)] = []
             while try step(stmt) {
                 guard
@@ -148,6 +151,50 @@ struct SessionSetRepository {
                     let reps = columnInt(stmt, 2)
                 else { continue }
                 result.append((sessionDate: date, weightKg: weight, reps: reps))
+            }
+            return result
+        }
+    }
+
+    // MARK: - Top duration per session
+
+    /// Best (max) `duration_secs` per completed session, dated on the session's
+    /// `started_at` — mirrors `topSetPerSession` so timed and weighted history
+    /// charts share one date source. Pass `limit: nil` to return every session.
+    func topDurationPerSession(exerciseID: UUID, limit: Int? = 12) async throws -> [(sessionDate: Date, durationSecs: Int)] {
+        try await dbManager.read { db in
+            let exerciseRowID = try resolveExerciseID(db, uuid: exerciseID)
+
+            let sql = """
+                SELECT s.started_at, ss.duration_secs
+                FROM session_set ss
+                JOIN session s ON s.id = ss.session_id
+                WHERE ss.exercise_id = ?
+                  AND s.status = 'COMPLETED'
+                  AND s.deleted_at IS NULL
+                  AND ss.duration_secs IS NOT NULL
+                  AND ss.duration_secs = (
+                      SELECT MAX(ss2.duration_secs)
+                      FROM session_set ss2
+                      WHERE ss2.session_id = ss.session_id
+                        AND ss2.exercise_id = ss.exercise_id
+                        AND ss2.duration_secs IS NOT NULL
+                  )
+                GROUP BY ss.session_id
+                ORDER BY s.started_at DESC
+                \(limit != nil ? "LIMIT ?;" : ";")
+                """
+            let stmt = try prepare(db, sql)
+            defer { finalize(stmt) }
+            bindInt(stmt, 1, exerciseRowID)
+            if let limit { bindInt(stmt, 2, limit) }
+            var result: [(sessionDate: Date, durationSecs: Int)] = []
+            while try step(stmt) {
+                guard
+                    let date = columnDate(stmt, 0),
+                    let dur = columnInt(stmt, 1)
+                else { continue }
+                result.append((sessionDate: date, durationSecs: dur))
             }
             return result
         }

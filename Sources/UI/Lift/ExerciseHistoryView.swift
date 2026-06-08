@@ -1,13 +1,64 @@
 import SwiftUI
 import Charts
 
+/// How much past data the history chart spans. The selection sets the chart's
+/// visible time window; the user scrolls horizontally to see older windows.
+enum HistoryRange: String, CaseIterable, Identifiable {
+    case week, month, quarter, year, twoYears
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .week:     return "1W"
+        case .month:    return "1M"
+        case .quarter:  return "1Q"
+        case .year:     return "1Y"
+        case .twoYears: return "2Y"
+        }
+    }
+
+    /// Calendar span of the visible window, subtracted from the anchor (newest
+    /// session) to find the window's left edge. Calendar arithmetic keeps the
+    /// edges on true boundaries across variable month lengths and leap years.
+    private var span: (component: Calendar.Component, value: Int) {
+        switch self {
+        case .week:     return (.day, 7)
+        case .month:    return (.month, 1)
+        case .quarter:  return (.month, 3)
+        case .year:     return (.year, 1)
+        case .twoYears: return (.year, 2)
+        }
+    }
+
+    /// Left edge of the visible window ending at `anchor`.
+    func windowStart(endingAt anchor: Date, calendar: Calendar = .current) -> Date {
+        calendar.date(byAdding: span.component, value: -span.value, to: anchor) ?? anchor
+    }
+}
+
 struct ExerciseHistoryView: View {
     let exerciseID: UUID
     @State private var viewModel: ExerciseHistoryViewModel
+    @State private var range: HistoryRange = .week
+    @State private var scrollX: Date = .now
 
     init(exerciseID: UUID, dbManager: DatabaseManager) {
         self.exerciseID = exerciseID
         self._viewModel = State(initialValue: ExerciseHistoryViewModel(exerciseID: exerciseID, dbManager: dbManager))
+    }
+
+    /// Anchors the visible window so its right edge sits at the newest session,
+    /// keeping the default view non-empty even if the last workout is old.
+    private func anchorScroll() {
+        guard let newest = viewModel.topSets.last?.date else { return }
+        scrollX = range.windowStart(endingAt: newest)
+    }
+
+    /// Visible window width in seconds, derived from the calendar-anchored window.
+    private var visibleDuration: TimeInterval {
+        guard let newest = viewModel.topSets.last?.date else { return 7 * 86_400 }
+        return newest.timeIntervalSince(range.windowStart(endingAt: newest))
     }
 
     var body: some View {
@@ -27,6 +78,8 @@ struct ExerciseHistoryView: View {
         .background(AppColor.background)
         .navigationBarTitleDisplayMode(.inline)
         .task { await viewModel.load() }
+        .onChange(of: viewModel.topSets.count) { anchorScroll() }
+        .onChange(of: range) { anchorScroll() }
     }
 
     // MARK: - Header
@@ -76,9 +129,16 @@ struct ExerciseHistoryView: View {
 
     private var chartSection: some View {
         VStack(alignment: .leading, spacing: AppSpacing.sm) {
-            Text(isTimeExercise ? "TOP-SET SECS · LAST 12 SESSIONS" : "TOP-SET KG · LAST 12 SESSIONS")
+            Text("\(isTimeExercise ? "TOP-SET SECS" : "TOP-SET KG") · \(range.label)")
                 .font(AppFont.caption)
                 .foregroundStyle(AppColor.textSecondary)
+
+            Picker("Range", selection: $range) {
+                ForEach(HistoryRange.allCases) { r in
+                    Text(r.label).tag(r)
+                }
+            }
+            .pickerStyle(.segmented)
 
             if isTimeExercise {
                 Chart(viewModel.topSets) { point in
@@ -93,19 +153,7 @@ struct ExerciseHistoryView: View {
                     )
                     .foregroundStyle(AppColor.accent)
                 }
-                .chartXAxis {
-                    AxisMarks(values: .automatic(desiredCount: 4)) { value in
-                        AxisGridLine()
-                        AxisValueLabel(format: .dateTime.month(.abbreviated).day())
-                    }
-                }
-                .chartYAxis {
-                    AxisMarks { value in
-                        AxisGridLine()
-                        AxisValueLabel()
-                    }
-                }
-                .frame(height: 180)
+                .scrollableHistoryDomain(length: visibleDuration, position: $scrollX)
             } else {
                 Chart(viewModel.topSets) { point in
                     LineMark(
@@ -119,19 +167,7 @@ struct ExerciseHistoryView: View {
                     )
                     .foregroundStyle(AppColor.accent)
                 }
-                .chartXAxis {
-                    AxisMarks(values: .automatic(desiredCount: 4)) { value in
-                        AxisGridLine()
-                        AxisValueLabel(format: .dateTime.month(.abbreviated).day())
-                    }
-                }
-                .chartYAxis {
-                    AxisMarks { value in
-                        AxisGridLine()
-                        AxisValueLabel()
-                    }
-                }
-                .frame(height: 180)
+                .scrollableHistoryDomain(length: visibleDuration, position: $scrollX)
             }
         }
     }
@@ -179,5 +215,38 @@ struct ExerciseHistoryView: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "EEE MMM d"
         return formatter.string(from: date)
+    }
+}
+
+/// Shared axis, scroll, and frame config for the history charts. Keeps the
+/// time / non-time chart branches from drifting apart.
+private struct ScrollableHistoryDomain: ViewModifier {
+    let length: TimeInterval
+    @Binding var position: Date
+
+    func body(content: Content) -> some View {
+        content
+            .chartXAxis {
+                AxisMarks(values: .automatic(desiredCount: 4)) { value in
+                    AxisGridLine()
+                    AxisValueLabel(format: .dateTime.month(.abbreviated).day())
+                }
+            }
+            .chartYAxis {
+                AxisMarks { value in
+                    AxisGridLine()
+                    AxisValueLabel()
+                }
+            }
+            .chartScrollableAxes(.horizontal)
+            .chartXVisibleDomain(length: length)
+            .chartScrollPosition(x: $position)
+            .frame(height: 180)
+    }
+}
+
+private extension View {
+    func scrollableHistoryDomain(length: TimeInterval, position: Binding<Date>) -> some View {
+        modifier(ScrollableHistoryDomain(length: length, position: position))
     }
 }
