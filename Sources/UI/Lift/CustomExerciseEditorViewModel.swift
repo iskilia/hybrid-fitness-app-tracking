@@ -104,6 +104,18 @@ final class CustomExerciseEditorViewModel {
 
     func save() async {
         guard isValid else { return }
+        // Only http/https form links may be stored; anything else (javascript:,
+        // file:, data:, …) would become a code-execution vector the moment the
+        // link is rendered as tappable.
+        let trimmedLink = formLink.trimmingCharacters(in: .whitespaces)
+        if !trimmedLink.isEmpty {
+            guard let scheme = URL(string: trimmedLink)?.scheme?.lowercased(),
+                  scheme == "http" || scheme == "https" else {
+                errorMessage = "Form link must be an http or https URL."
+                return
+            }
+        }
+        let formLinkValue = trimmedLink.isEmpty ? nil : trimmedLink
         isSaving = true
         defer { isSaving = false }
         do {
@@ -117,7 +129,7 @@ final class CustomExerciseEditorViewModel {
                 metricType: metricType,
                 isCustom: true,
                 notes: notes.isEmpty ? nil : notes,
-                formLink: formLink.isEmpty ? nil : formLink,
+                formLink: formLinkValue,
                 createdAt: editingCreatedAt ?? now,
                 updatedAt: now,
                 deletedAt: nil
