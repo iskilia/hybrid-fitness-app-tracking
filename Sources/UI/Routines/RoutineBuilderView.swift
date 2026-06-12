@@ -74,7 +74,6 @@ private extension RoutineBuilderView {
     var headerSection: some View {
         VStack(alignment: .leading, spacing: AppSpacing.sm) {
             HStack(spacing: AppSpacing.md) {
-                BadgeView(kind: viewModel.derivedType)
                 Text("\(viewModel.entries.count) EXERCISES")
                     .font(AppFont.caption)
                     .foregroundStyle(AppColor.textSecondary)

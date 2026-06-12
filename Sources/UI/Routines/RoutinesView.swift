@@ -32,6 +32,13 @@ struct RoutinesView: View {
                 .font(AppFont.headline)
                 .foregroundStyle(AppColor.textSecondary)
                 .padding(.top, AppSpacing.xs)
+
+            if !viewModel.routines.isEmpty {
+                Text("Swipe left on a routine to delete it.")
+                    .font(AppFont.caption)
+                    .foregroundStyle(AppColor.textSecondary)
+                    .padding(.top, AppSpacing.xs)
+            }
         }
     }
 
