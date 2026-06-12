@@ -63,6 +63,10 @@ final class RoutineBuilderViewModel {
         runEntries.append(template)
     }
 
+    func removeRun(_ template: RunTemplate) {
+        runEntries.removeAll { $0.id == template.id }
+    }
+
     var isValid: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty
             && !(entries.isEmpty && runEntries.isEmpty)
