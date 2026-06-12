@@ -48,6 +48,17 @@ final class ExerciseLibraryViewModel {
         }
     }
 
+    /// Permanently deletes a custom exercise and all its associated data, then reloads.
+    func delete(_ exercise: Exercise) async {
+        do {
+            try await exerciseRepo.hardDelete(id: exercise.clientUUID)
+            musclesByExerciseID[exercise.id] = nil
+            await load()
+        } catch {
+            // Silently fail — list stays unchanged
+        }
+    }
+
     /// Loads muscle associations for a batch of exercises (called lazily or on demand).
     func loadMuscles(for exercise: Exercise) async {
         guard musclesByExerciseID[exercise.id] == nil else { return }

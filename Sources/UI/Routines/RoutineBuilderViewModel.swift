@@ -7,14 +7,14 @@ import SQLite3
 @Observable
 @MainActor
 final class ExerciseEntry: Identifiable {
-    let id: UUID
+    // Own identity (not exercise.clientUUID) so the same exercise can be added twice.
+    let id = UUID()
     let exercise: Exercise
     var targetSets: Int?
     var targetRepMin: Int?
     var targetRepMax: Int?
 
     init(exercise: Exercise) {
-        self.id = exercise.clientUUID
         self.exercise = exercise
     }
 }
@@ -53,6 +53,10 @@ final class RoutineBuilderViewModel {
 
     func add(_ exercise: Exercise) {
         entries.append(ExerciseEntry(exercise: exercise))
+    }
+
+    func remove(_ entry: ExerciseEntry) {
+        entries.removeAll { $0.id == entry.id }
     }
 
     func addRun(_ template: RunTemplate) {

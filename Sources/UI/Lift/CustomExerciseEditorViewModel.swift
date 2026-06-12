@@ -33,10 +33,15 @@ final class CustomExerciseEditorViewModel {
 
     var showEvictionConfirm = false
     var showImpossibleAlert = false
+
+    var isEditing: Bool { editingExerciseID != nil }
     private var pendingInsert: (@Sendable (OpaquePointer) throws -> Void)?
 
     /// Non-nil when editing an existing exercise (integer row ID).
     private let editingExerciseID: Int?
+    /// Identity of the exercise being edited, preserved so update() targets the same row.
+    private var editingClientUUID: UUID?
+    private var editingCreatedAt: Date?
     private let exerciseRepo: ExerciseRepository
     private let dbManager: DatabaseManager
     private let storageGuard: StorageGuard
@@ -60,11 +65,36 @@ final class CustomExerciseEditorViewModel {
 
             if let exerciseID = editingExerciseID {
                 self.isMetricTypeLocked = try await exerciseRepo.metricTypeLocked(exerciseID: exerciseID)
+                try await prefill(exerciseID: exerciseID)
             }
 
             if let p = try await UserProfileRepository(dbManager: dbManager).get() { maxDataMb = p.maxDataMb }
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Populates the form with the existing exercise's values when editing.
+    private func prefill(exerciseID: Int) async throws {
+        guard let exercise = try await exerciseRepo.get(rowID: exerciseID) else { return }
+        name = exercise.name
+        abbreviation = exercise.abbreviation
+        selectedEquipmentID = exercise.equipmentID
+        metricType = exercise.metricType
+        notes = exercise.notes ?? ""
+        formLink = exercise.formLink ?? ""
+        editingClientUUID = exercise.clientUUID
+        editingCreatedAt = exercise.createdAt
+
+        let existing = try await exerciseRepo.musclesFor(exerciseID: exercise.clientUUID)
+        let roleByMuscleID = Dictionary(uniqueKeysWithValues: existing.map { ($0.0.id, $0.1) })
+        muscleSelections = muscleSelections.map { sel in
+            var sel = sel
+            if let role = roleByMuscleID[sel.muscle.id] {
+                sel.isSelected = true
+                sel.role = role
+            }
+            return sel
         }
     }
 
@@ -80,7 +110,7 @@ final class CustomExerciseEditorViewModel {
             let now = Date()
             let exercise = Exercise(
                 id: editingExerciseID ?? 0,
-                clientUUID: UUID(),
+                clientUUID: editingClientUUID ?? UUID(),
                 name: name.trimmingCharacters(in: .whitespaces),
                 abbreviation: String(abbreviation.prefix(4)).uppercased(),
                 equipmentID: selectedEquipmentID ?? 0,
@@ -88,7 +118,7 @@ final class CustomExerciseEditorViewModel {
                 isCustom: true,
                 notes: notes.isEmpty ? nil : notes,
                 formLink: formLink.isEmpty ? nil : formLink,
-                createdAt: now,
+                createdAt: editingCreatedAt ?? now,
                 updatedAt: now,
                 deletedAt: nil
             )

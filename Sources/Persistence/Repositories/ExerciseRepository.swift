@@ -39,6 +39,17 @@ struct ExerciseRepository: Sendable {
         }
     }
 
+    func get(rowID: Int) async throws -> Exercise? {
+        try await dbManager.read { db in
+            let sql = exerciseSelectSQL() + " WHERE e.id = ? AND e.deleted_at IS NULL;"
+            let stmt = try prepare(db, sql)
+            defer { finalize(stmt) }
+            bindInt(stmt, 1, rowID)
+            guard try step(stmt) else { return nil }
+            return try exerciseFromStmt(stmt)
+        }
+    }
+
     // MARK: - Lookup lists
 
     func listAllEquipment() async throws -> [Equipment] {
@@ -271,6 +282,31 @@ struct ExerciseRepository: Sendable {
             bindDate(stmt, 2, now)
             bindUUID(stmt, 3, id)
             _ = try step(stmt)
+        }
+    }
+
+    // MARK: - Hard-delete (custom exercises)
+
+    /// Permanently removes an exercise and ALL associated data:
+    /// session_set and routine_exercise rows (no FK cascade on exercise_id),
+    /// then the exercise row itself (exercise_muscle cascades via FK).
+    func hardDelete(id: UUID) async throws {
+        try await dbManager.transaction { db in
+            let idStmt = try prepare(db, "SELECT id FROM exercise WHERE client_uuid = ?;")
+            defer { finalize(idStmt) }
+            bindUUID(idStmt, 1, id)
+            guard try step(idStmt), let rowID = columnInt(idStmt, 0) else { return }
+
+            for sql in [
+                "DELETE FROM session_set WHERE exercise_id = ?;",
+                "DELETE FROM routine_exercise WHERE exercise_id = ?;",
+                "DELETE FROM exercise WHERE id = ?;"
+            ] {
+                let stmt = try prepare(db, sql)
+                defer { finalize(stmt) }
+                bindInt(stmt, 1, rowID)
+                _ = try step(stmt)
+            }
         }
     }
 
