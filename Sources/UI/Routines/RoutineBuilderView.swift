@@ -144,7 +144,10 @@ private extension RoutineBuilderView {
     var runListSection: some View {
         VStack(spacing: 0) {
             ForEach(viewModel.runEntries) { template in
-                RunRow(template: template, intervals: [])
+                SwipeToDeleteRow(onDelete: { viewModel.removeRun(template) }) {
+                    RunRow(template: template, intervals: [])
+                        .background(AppColor.background)
+                }
                 Divider()
                     .background(AppColor.divider)
                     .padding(.leading, AppSpacing.lg + 56 + AppSpacing.md)
