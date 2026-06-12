@@ -31,9 +31,10 @@ struct RoutineBuilderView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { await viewModel.load() }
         .sheet(isPresented: $showExerciseLibrary) {
+            // Sheet stays open so several exercises can be added in one visit;
+            // the user closes it with the library's Close button.
             ExerciseLibraryView(dbManager: viewModel.dbManager, onSelect: { exercise in
                 viewModel.add(exercise)
-                showExerciseLibrary = false
             })
         }
         .sheet(isPresented: $showRunPicker) {
@@ -103,7 +104,7 @@ private extension RoutineBuilderView {
                         exercise: entry.exercise,
                         equipment: nil,
                         primaryMuscle: nil,
-                        trailingContent: nil
+                        trailingContent: AnyView(removeButton(for: entry))
                     )
                     HStack(spacing: AppSpacing.md) {
                         entryField(label: "SETS", value: $bindableEntry.targetSets)
@@ -117,6 +118,19 @@ private extension RoutineBuilderView {
                     .background(AppColor.divider)
                     .padding(.leading, AppSpacing.lg + 56 + AppSpacing.md)
             }
+        }
+    }
+
+    private func removeButton(for entry: ExerciseEntry) -> some View {
+        Button {
+            viewModel.remove(entry)
+        } label: {
+            Image(systemName: "trash")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(AppColor.textSecondary)
+                .frame(width: 32, height: 32)
+                .background(AppColor.surface)
+                .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
         }
     }
 

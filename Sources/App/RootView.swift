@@ -65,7 +65,7 @@ struct RootView: View {
             }
         case .exerciseLibrary:
             if let db = dbManager {
-                ExerciseLibraryView(dbManager: db, onSelect: { _ in })
+                ExerciseManagerView(dbManager: db)
             }
         case .exerciseHistory(let id):
             if let db = dbManager {

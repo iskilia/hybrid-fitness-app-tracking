@@ -94,6 +94,14 @@ struct HomeView: View {
         }
         ToolbarItem(placement: .topBarTrailing) {
             Button {
+                router?.push(.exerciseLibrary)
+            } label: {
+                Image(systemName: "dumbbell")
+                    .foregroundStyle(AppColor.textPrimary)
+            }
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Button {
                 router?.push(.routines)
             } label: {
                 Image(systemName: "list.bullet")

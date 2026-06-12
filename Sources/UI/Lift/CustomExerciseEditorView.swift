@@ -32,7 +32,7 @@ struct CustomExerciseEditorView: View {
             } message: {
                 Text("Not enough space — edit your data first.")
             }
-            .navigationTitle("NEW EXERCISE")
+            .navigationTitle(viewModel.isEditing ? "EDIT EXERCISE" : "NEW EXERCISE")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbarButtons }
         }

@@ -24,7 +24,10 @@ struct ExerciseLibraryView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { closeButton }
             .safeAreaInset(edge: .bottom) { addCustomButton }
-            .sheet(isPresented: $showCustomEditor) {
+            .sheet(isPresented: $showCustomEditor, onDismiss: {
+                // Refresh so a just-created custom exercise shows up immediately.
+                Task { await viewModel.load() }
+            }) {
                 if let db = dbManager {
                     CustomExerciseEditorView(dbManager: db)
                 }

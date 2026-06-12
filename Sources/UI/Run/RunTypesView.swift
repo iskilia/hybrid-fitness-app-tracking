@@ -29,7 +29,10 @@ struct RunTypesView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbarContent }
         .task { await viewModel.load() }
-        .sheet(isPresented: $showCustomEditor) {
+        .sheet(isPresented: $showCustomEditor, onDismiss: {
+            // Refresh so a just-created custom run type shows up immediately.
+            Task { await viewModel.load() }
+        }) {
             CustomRunTemplateEditorView(dbManager: viewModel.dbManager)
         }
     }
