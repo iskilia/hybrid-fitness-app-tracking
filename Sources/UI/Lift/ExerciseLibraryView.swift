@@ -7,10 +7,11 @@ struct ExerciseLibraryView: View {
     @State private var toastDismissTask: Task<Void, Never>?
     let onSelect: (Exercise) -> Void
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.databaseManager) private var dbManager
+    private let dbManager: DatabaseManager
 
     init(dbManager: DatabaseManager, onSelect: @escaping (Exercise) -> Void) {
         self._viewModel = State(initialValue: ExerciseLibraryViewModel(dbManager: dbManager))
+        self.dbManager = dbManager
         self.onSelect = onSelect
     }
 
@@ -31,9 +32,7 @@ struct ExerciseLibraryView: View {
                 // Refresh so a just-created custom exercise shows up immediately.
                 Task { await viewModel.load() }
             }) {
-                if let db = dbManager {
-                    CustomExerciseEditorView(dbManager: db)
-                }
+                CustomExerciseEditorView(dbManager: dbManager)
             }
         }
         .task {
