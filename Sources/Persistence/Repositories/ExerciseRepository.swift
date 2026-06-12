@@ -100,12 +100,17 @@ struct ExerciseRepository: Sendable {
         try await dbManager.read { db in
             let sql = exerciseSelectSQL() + """
                  WHERE e.deleted_at IS NULL
-                   AND (e.name LIKE ? OR e.abbreviation LIKE ?)
+                   AND (e.name LIKE ? ESCAPE '\\' OR e.abbreviation LIKE ? ESCAPE '\\')
                  ORDER BY e.name ASC;
                 """
             let stmt = try prepare(db, sql)
             defer { finalize(stmt) }
-            let pattern = "%\(query)%"
+            // Escape LIKE wildcards so user input matches literally.
+            let escaped = query
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "%", with: "\\%")
+                .replacingOccurrences(of: "_", with: "\\_")
+            let pattern = "%\(escaped)%"
             bindText(stmt, 1, pattern)
             bindText(stmt, 2, pattern)
             var result: [Exercise] = []
