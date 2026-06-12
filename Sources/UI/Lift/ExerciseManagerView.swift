@@ -102,42 +102,43 @@ private extension ExerciseManagerView {
             .padding(.bottom, AppSpacing.xs)
     }
 
-    @ViewBuilder
     func row(_ exercise: Exercise, isCustom: Bool) -> some View {
-        ExerciseRow(
+        VStack(spacing: 0) {
+            exerciseRow(exercise, isCustom: isCustom)
+            Divider()
+                .background(AppColor.divider)
+                .padding(.leading, AppSpacing.lg + 56 + AppSpacing.md)
+        }
+    }
+
+    @ViewBuilder
+    func exerciseRow(_ exercise: Exercise, isCustom: Bool) -> some View {
+        let content = ExerciseRow(
             exercise: exercise,
             equipment: viewModel.equipmentByExerciseID[exercise.id],
             primaryMuscle: viewModel.musclesByExerciseID[exercise.id]?.first,
-            trailingContent: isCustom ? AnyView(customActions(for: exercise)) : nil
+            trailingContent: isCustom ? AnyView(editAction(for: exercise)) : nil
         )
+        .background(AppColor.background)
         .task { await viewModel.loadMuscles(for: exercise) }
-        Divider()
-            .background(AppColor.divider)
-            .padding(.leading, AppSpacing.lg + 56 + AppSpacing.md)
+
+        if isCustom {
+            SwipeToDeleteRow(onDelete: { exerciseToDelete = exercise }) { content }
+        } else {
+            content
+        }
     }
 
-    func customActions(for exercise: Exercise) -> some View {
-        HStack(spacing: AppSpacing.sm) {
-            Button {
-                editingExercise = EditingExerciseID(id: exercise.id)
-            } label: {
-                Image(systemName: "pencil")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(AppColor.textPrimary)
-                    .frame(width: 32, height: 32)
-                    .background(AppColor.surface)
-                    .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
-            }
-            Button {
-                exerciseToDelete = exercise
-            } label: {
-                Image(systemName: "trash")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(AppColor.textSecondary)
-                    .frame(width: 32, height: 32)
-                    .background(AppColor.surface)
-                    .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
-            }
+    func editAction(for exercise: Exercise) -> some View {
+        Button {
+            editingExercise = EditingExerciseID(id: exercise.id)
+        } label: {
+            Image(systemName: "pencil")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(AppColor.textPrimary)
+                .frame(width: 32, height: 32)
+                .background(AppColor.surface)
+                .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
         }
     }
 
