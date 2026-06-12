@@ -81,7 +81,7 @@ struct CustomRunTemplateEditorView: View {
             HStack {
                 TextField("Min BPM", text: $viewModel.hrMin)
                     .keyboardType(.numberPad)
-                Text("\u{2013}")
+                Text("–")
                     .foregroundStyle(AppColor.textSecondary)
                 TextField("Max BPM", text: $viewModel.hrMax)
                     .keyboardType(.numberPad)

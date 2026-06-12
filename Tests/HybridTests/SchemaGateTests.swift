@@ -4,7 +4,7 @@ import SQLite3
 
 /// Phase 1 gate (PLAN.md line 127):
 /// "unit test creates in-memory DB, applies schema, inserts seed, queries each table successfully."
-final class Phase1GateTests: XCTestCase {
+final class SchemaGateTests: XCTestCase {
 
     // MARK: - Per-test in-memory DB
 

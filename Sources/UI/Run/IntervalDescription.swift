@@ -4,6 +4,9 @@ import Foundation
 
 /// Builds a compact human-readable description from a set of RunIntervalBlock rows.
 /// Example output: "5 × 800M @ 3:30 + 200M JOG" or "2K WU · 5K T · 1K CD"
+///
+/// Note: distance labels here use a compact no-space style ("5KM", "400M") for interval
+/// chip display, which deliberately differs from the shared `kmLabel(_:)` helper.
 enum IntervalDescription {
     static func describe(_ blocks: [RunIntervalBlock]) -> String {
         guard !blocks.isEmpty else { return "" }

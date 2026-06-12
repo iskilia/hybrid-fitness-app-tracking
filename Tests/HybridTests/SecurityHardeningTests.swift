@@ -4,7 +4,7 @@ import SQLite3
 
 /// F3 — SQLite hardening: no statement may reach another file via ATTACH.
 @MainActor
-final class Pass14SecurityHardeningTests: XCTestCase {
+final class SecurityHardeningTests: XCTestCase {
 
     private func makeTempDB() throws -> DatabaseManager {
         let tmp = FileManager.default.temporaryDirectory

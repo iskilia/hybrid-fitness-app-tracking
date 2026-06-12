@@ -3,7 +3,7 @@ import SQLite3
 @testable import Hybrid
 
 /// Pass 2 — StorageGuard gate tests.
-final class Pass2StorageTests: XCTestCase {
+final class StorageGuardTests: XCTestCase {
 
     // MARK: - Helpers
 

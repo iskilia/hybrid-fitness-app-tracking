@@ -4,7 +4,7 @@ import SQLite3
 
 /// PR #9 review remediation (PR A) — mixed-session correctness.
 @MainActor
-final class Pass9MixedCorrectnessTests: XCTestCase {
+final class MixedSessionCorrectnessTests: XCTestCase {
 
     private func makeTempDB() throws -> DatabaseManager {
         let tmp = FileManager.default.temporaryDirectory

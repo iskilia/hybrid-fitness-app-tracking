@@ -159,14 +159,8 @@ final class CustomExerciseEditorViewModel {
                 pendingInsert = insert
                 showEvictionConfirm = true
             }
-        } catch let dbErr as DatabaseError {
-            if case .conflict(let msg) = dbErr {
-                errorMessage = msg
-            } else {
-                errorMessage = dbErr.localizedDescription
-            }
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userMessage
         }
     }
 

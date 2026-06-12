@@ -4,7 +4,7 @@ import SQLite3
 
 /// PR C — mixed run-block pace via the MM:SS wheel (replaces the free-text field).
 @MainActor
-final class Pass12MixedPaceTests: XCTestCase {
+final class MixedRunPaceTests: XCTestCase {
 
     private func makeTempDB() throws -> DatabaseManager {
         let tmp = FileManager.default.temporaryDirectory

@@ -61,7 +61,7 @@ struct RunSummaryView: View {
                         .font(AppFont.captionMono)
                         .foregroundStyle(AppColor.textSecondary)
                     Spacer()
-                    Text(String(format: "%.2f km", s.distanceKm ?? 0))
+                    Text(String(format: "%.2f KM", s.distanceKm ?? 0))
                         .font(AppFont.bodyBold)
                         .foregroundStyle(AppColor.textPrimary)
                 }
@@ -93,16 +93,12 @@ struct RunSummaryView: View {
 
     private func duration(_ r: SessionRun) -> String {
         guard let s = r.durationSecs else { return "—" }
-        let h = s / 3600
-        let m = (s % 3600) / 60
-        let sec = s % 60
-        if h > 0 { return String(format: "%02d:%02d:%02d", h, m, sec) }
-        return String(format: "%02d:%02d", m, sec)
+        return formattedDuration(s)
     }
 
     private func pace(_ r: SessionRun) -> String {
         guard let p = r.avgPaceSecs, p > 0 else { return "—" }
-        return String(format: "%d:%02d /KM", p / 60, p % 60)
+        return paceLabel(p)
     }
 
     private func hr(_ r: SessionRun) -> String {

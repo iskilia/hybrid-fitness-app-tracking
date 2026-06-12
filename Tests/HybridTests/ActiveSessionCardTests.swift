@@ -4,7 +4,7 @@ import SQLite3
 
 /// Pass 7 — Sessions feedback: typed run entry, unified lift card, empty history state.
 @MainActor
-final class Pass7SessionsFeedbackTests: XCTestCase {
+final class ActiveSessionCardTests: XCTestCase {
 
     // MARK: - Helpers
 

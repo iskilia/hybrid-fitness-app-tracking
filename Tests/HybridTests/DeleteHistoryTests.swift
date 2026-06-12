@@ -3,7 +3,7 @@ import SQLite3
 @testable import Hybrid
 
 /// Pass 5 — Delete routine, delete-all-history, Muscle enum seed parity.
-final class Pass5DeletesTests: XCTestCase {
+final class DeleteHistoryTests: XCTestCase {
 
     // MARK: - Helpers
 
@@ -108,7 +108,7 @@ final class Pass5DeletesTests: XCTestCase {
         XCTAssertGreaterThan(runCount, 0, "routine_run rows must exist before delete")
 
         // Hard-delete
-        try await routineRepo.delete(clientUUID: created.clientUUID)
+        try await routineRepo.delete(id: created.clientUUID)
 
         // get(id:) returns nil
         let fetched = try await routineRepo.get(id: created.clientUUID)
@@ -322,7 +322,7 @@ final class Pass5DeletesTests: XCTestCase {
         XCTAssertTrue(routineIDBeforeDelete, "Precondition: session.routine_id must be set before routine delete")
 
         // Hard-delete the routine
-        try await routineRepo.delete(clientUUID: routineUUID)
+        try await routineRepo.delete(id: routineUUID)
 
         // Session row must still exist
         let sessionCount = try await countRows(db, sql: "SELECT COUNT(*) FROM session WHERE id = \(session.id);")

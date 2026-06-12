@@ -5,7 +5,7 @@ import SQLite3
 /// Pass 3 — Session-tracking tests.
 /// Bug #2: weekStats counts only COMPLETED sessions.
 /// Bug #1: Home count survives a Settings round-trip.
-final class Pass3SessionTests: XCTestCase {
+final class SessionTrackingTests: XCTestCase {
 
     // MARK: - Helpers
 

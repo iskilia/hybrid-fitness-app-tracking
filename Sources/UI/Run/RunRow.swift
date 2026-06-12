@@ -49,27 +49,12 @@ struct RunRow: View {
     }
 
     private var metaLine: String {
-        var parts: [String] = []
-        parts.append(template.runType.rawValue)
-        if let km = template.targetTotalDistanceKm {
-            let kmStr = km.truncatingRemainder(dividingBy: 1) == 0
-                ? "\(Int(km)).0 KM" : String(format: "%.1f KM", km)
-            parts.append(kmStr)
-        }
-        if let paceMin = template.targetPaceSecsMin {
-            let m = paceMin / 60
-            let s = paceMin % 60
-            parts.append(String(format: "%d:%02d /KM", m, s))
-        }
-        if let zMin = template.hrZoneMin, let zMax = template.hrZoneMax {
-            parts.append("Z\(zMin)-\(zMax)")
-        }
-        return parts.joined(separator: " \u{B7} ")
+        template.metaLine(includeRunType: true, includeBpm: false, includeZone: true)
     }
 
     private var bpmLine: String? {
         guard let min = template.hrBpmMin, let max = template.hrBpmMax else { return nil }
-        return "\(min)\u{2013}\(max) BPM"
+        return "\(min)–\(max) BPM"
     }
 
     private var intervalDesc: String {

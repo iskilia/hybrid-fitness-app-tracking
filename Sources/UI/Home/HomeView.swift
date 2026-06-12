@@ -20,13 +20,13 @@ struct HomeView: View {
         .alert(
             "Couldn't load Home",
             isPresented: Binding(
-                get: { viewModel.loadError != nil },
-                set: { if !$0 { viewModel.loadError = nil } }
+                get: { viewModel.errorMessage != nil },
+                set: { if !$0 { viewModel.errorMessage = nil } }
             )
         ) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text(viewModel.loadError ?? "")
+            Text(viewModel.errorMessage ?? "")
         }
     }
 

@@ -3,7 +3,7 @@ import SQLite3
 @testable import Hybrid
 
 /// Phase 7 (PLAN.md T7.3): "seed 500 fake sessions, confirm < 10 MB".
-final class Phase7SizeTests: XCTestCase {
+final class DatabaseSizeTests: XCTestCase {
 
     func testFiveHundredSessionsUnderTenMegabytes() async throws {
         let tmp = FileManager.default.temporaryDirectory

@@ -4,7 +4,7 @@ import SQLite3
 
 /// Phase 2 gate (PLAN.md line 143):
 /// "integration tests cover repo round-trip for each entity. CASCADE deletes verified."
-final class Phase2RepositoryTests: XCTestCase {
+final class RepositoryTests: XCTestCase {
 
     // MARK: - In-memory stack (rebuilt per test)
 

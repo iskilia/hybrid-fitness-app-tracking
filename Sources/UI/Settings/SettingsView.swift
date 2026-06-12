@@ -95,13 +95,13 @@ struct SettingsView: View {
         .alert(
             "Couldn't free space",
             isPresented: Binding(
-                get: { viewModel.storageErrorMessage != nil },
-                set: { if !$0 { viewModel.storageErrorMessage = nil } }
+                get: { viewModel.errorMessage != nil },
+                set: { if !$0 { viewModel.errorMessage = nil } }
             )
         ) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text(viewModel.storageErrorMessage ?? "")
+            Text(viewModel.errorMessage ?? "")
         }
     }
 
@@ -134,7 +134,7 @@ struct SettingsView: View {
             Button("Delete all history", role: .destructive) {
                 Task {
                     await viewModel.deleteAllHistory()
-                    if viewModel.storageErrorMessage == nil { router?.popToRoot() }
+                    if viewModel.errorMessage == nil { router?.popToRoot() }
                 }
             }
             Button("Cancel", role: .cancel) {}

@@ -5,7 +5,7 @@ import SQLite3
 /// Pass 16 — Exercise feedback: routine-builder entry removal, multi-add,
 /// custom-exercise hard delete with cascade, and editor prefill/update.
 @MainActor
-final class Pass16ExerciseFeedbackTests: XCTestCase {
+final class ExerciseFeedbackTests: XCTestCase {
 
     // MARK: - Helpers
 
