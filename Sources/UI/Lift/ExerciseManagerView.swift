@@ -102,22 +102,18 @@ private extension ExerciseManagerView {
             .padding(.bottom, AppSpacing.xs)
     }
 
-    @ViewBuilder
     func row(_ exercise: Exercise, isCustom: Bool) -> some View {
-        if isCustom {
-            SwipeToDeleteRow(onDelete: { exerciseToDelete = exercise }) {
-                exerciseRow(exercise, isCustom: true)
-            }
-        } else {
-            exerciseRow(exercise, isCustom: false)
+        VStack(spacing: 0) {
+            exerciseRow(exercise, isCustom: isCustom)
+            Divider()
+                .background(AppColor.divider)
+                .padding(.leading, AppSpacing.lg + 56 + AppSpacing.md)
         }
-        Divider()
-            .background(AppColor.divider)
-            .padding(.leading, AppSpacing.lg + 56 + AppSpacing.md)
     }
 
+    @ViewBuilder
     func exerciseRow(_ exercise: Exercise, isCustom: Bool) -> some View {
-        ExerciseRow(
+        let content = ExerciseRow(
             exercise: exercise,
             equipment: viewModel.equipmentByExerciseID[exercise.id],
             primaryMuscle: viewModel.musclesByExerciseID[exercise.id]?.first,
@@ -125,6 +121,12 @@ private extension ExerciseManagerView {
         )
         .background(AppColor.background)
         .task { await viewModel.loadMuscles(for: exercise) }
+
+        if isCustom {
+            SwipeToDeleteRow(onDelete: { exerciseToDelete = exercise }) { content }
+        } else {
+            content
+        }
     }
 
     func editAction(for exercise: Exercise) -> some View {
