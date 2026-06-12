@@ -3,6 +3,8 @@ import SwiftUI
 struct ExerciseLibraryView: View {
     @State private var viewModel: ExerciseLibraryViewModel
     @State private var showCustomEditor = false
+    @State private var toastMessage: String?
+    @State private var toastDismissTask: Task<Void, Never>?
     let onSelect: (Exercise) -> Void
     @Environment(\.dismiss) private var dismiss
     @Environment(\.databaseManager) private var dbManager
@@ -24,6 +26,7 @@ struct ExerciseLibraryView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { closeButton }
             .safeAreaInset(edge: .bottom) { addCustomButton }
+            .overlay(alignment: .bottom) { toast }
             .sheet(isPresented: $showCustomEditor, onDismiss: {
                 // Refresh so a just-created custom exercise shows up immediately.
                 Task { await viewModel.load() }
@@ -80,7 +83,10 @@ private extension ExerciseLibraryView {
                         exercise: exercise,
                         equipment: viewModel.equipmentByExerciseID[exercise.id],
                         muscles: viewModel.musclesByExerciseID[exercise.id] ?? [],
-                        onAdd: { onSelect(exercise) }
+                        onAdd: {
+                            onSelect(exercise)
+                            showToast("Added \(exercise.name)")
+                        }
                     )
                     .task { await viewModel.loadMuscles(for: exercise) }
                     Divider()
@@ -88,6 +94,31 @@ private extension ExerciseLibraryView {
                         .padding(.leading, AppSpacing.lg + 56 + AppSpacing.md)
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    var toast: some View {
+        if let message = toastMessage {
+            Text(message)
+                .font(AppFont.caption)
+                .foregroundStyle(.white)
+                .padding(.horizontal, AppSpacing.md)
+                .padding(.vertical, AppSpacing.sm)
+                .background(AppColor.textPrimary)
+                .clipShape(Capsule())
+                .padding(.bottom, AppSpacing.lg)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
+    }
+
+    func showToast(_ message: String) {
+        toastDismissTask?.cancel()
+        withAnimation(.easeOut(duration: 0.2)) { toastMessage = message }
+        toastDismissTask = Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeIn(duration: 0.2)) { toastMessage = nil }
         }
     }
 
