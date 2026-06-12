@@ -23,9 +23,7 @@ func formattedDuration(_ totalSecs: Int) -> String {
 /// Note: `IntervalDescription.swift` uses a compact no-space style ("5KM", "400M")
 /// for interval chip labels — this is intentional and deliberately differs from `kmLabel`.
 func kmLabel(_ km: Double) -> String {
-    km.truncatingRemainder(dividingBy: 1) == 0
-        ? "\(Int(km)).0 KM"
-        : String(format: "%.1f KM", km)
+    String(format: "%.1f KM", km)
 }
 
 // MARK: - Pace

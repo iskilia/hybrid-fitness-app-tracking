@@ -3,11 +3,11 @@ import SwiftUI
 // MARK: - Error alert helper
 
 extension View {
-    /// Presents a "Couldn't free space" alert driven by an optional error-message string.
+    /// Presents an alert driven by an optional error-message string.
     /// Dismissing the alert clears the binding.
-    func errorAlert(message: Binding<String?>) -> some View {
+    func errorAlert(_ title: String, message: Binding<String?>) -> some View {
         self.alert(
-            "Couldn't free space",
+            title,
             isPresented: Binding(
                 get: { message.wrappedValue != nil },
                 set: { if !$0 { message.wrappedValue = nil } }

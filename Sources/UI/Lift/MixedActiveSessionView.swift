@@ -76,10 +76,7 @@ struct MixedActiveSessionView: View {
             }
             Button("Cancel", role: .cancel) { router?.popToRoot() }
         }
-        .errorAlert(message: Binding(
-            get: { viewModel.errorMessage },
-            set: { viewModel.errorMessage = $0 }
-        ))
+        .errorAlert("Couldn't free space", message: $viewModel.errorMessage)
     }
 
     // MARK: - Sticky header
@@ -179,7 +176,7 @@ struct MixedActiveSessionView: View {
     // MARK: - Helpers
 
     private var elapsedString: String {
-        guard let start = viewModel.session?.startedAt else { return "0:00:00" }
+        guard let start = viewModel.session?.startedAt else { return formattedDuration(0) }
         let elapsed = Int(Date().timeIntervalSince(start))
         return formattedDuration(elapsed)
     }

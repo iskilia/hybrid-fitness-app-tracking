@@ -62,10 +62,7 @@ struct RunActiveSessionView: View {
             }
             Button("Cancel", role: .cancel) { router?.popToRoot() }
         }
-        .errorAlert(message: Binding(
-            get: { viewModel.errorMessage },
-            set: { viewModel.errorMessage = $0 }
-        ))
+        .errorAlert("Couldn't free space", message: $viewModel.errorMessage)
     }
 
     // MARK: - Timer

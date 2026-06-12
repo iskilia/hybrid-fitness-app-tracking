@@ -92,17 +92,7 @@ struct SettingsView: View {
         } message: {
             Text("Lowering the limit will permanently delete your oldest history to fit the new size. This can't be undone.")
         }
-        .alert(
-            "Couldn't free space",
-            isPresented: Binding(
-                get: { viewModel.errorMessage != nil },
-                set: { if !$0 { viewModel.errorMessage = nil } }
-            )
-        ) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(viewModel.errorMessage ?? "")
-        }
+        .errorAlert("Couldn't free space", message: $viewModel.errorMessage)
     }
 
     private var limitOptions: [Int] {
