@@ -151,9 +151,9 @@ struct RoutineRepository {
     // MARK: - Hard-delete
 
     /// Hard-deletes a routine and its child rows (routine_exercise, routine_run) in one transaction.
-    func delete(clientUUID: UUID) async throws {
+    func delete(id: UUID) async throws {
         try await dbManager.transaction { db in
-            let routineRowID = try routineRowID(db, clientUUID: clientUUID)
+            let routineRowID = try routineRowID(db, clientUUID: id)
 
             let delEx = try prepare(db, "DELETE FROM routine_exercise WHERE routine_id = ?;")
             defer { finalize(delEx) }

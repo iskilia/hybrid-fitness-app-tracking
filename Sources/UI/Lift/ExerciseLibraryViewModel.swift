@@ -65,7 +65,9 @@ final class ExerciseLibraryViewModel {
         do {
             let pairs = try await exerciseRepo.musclesFor(exerciseID: exercise.clientUUID)
             musclesByExerciseID[exercise.id] = pairs.map { $0.0 }
-        } catch {}
+        } catch {
+            // Muscle chips are decorative; leave previous (empty) state on error.
+        }
     }
 
     // MARK: - Distinct muscle groups (for filter chips)

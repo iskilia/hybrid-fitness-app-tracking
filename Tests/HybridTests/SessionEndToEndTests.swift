@@ -5,7 +5,7 @@ import SQLite3
 /// Phase 5 gate (PLAN.md line 191):
 /// "end-to-end test: create routine → start → log sets/run → finish →
 ///  appears in history with correct aggregates."
-final class Phase5GateTests: XCTestCase {
+final class SessionEndToEndTests: XCTestCase {
 
     private var db: DatabaseManager!
     private var routines: RoutineRepository!

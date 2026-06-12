@@ -16,7 +16,7 @@ final class SettingsViewModel {
     private let storageGuard: StorageGuard
     private var previousMaxDataMb: Int = 10
     var showLimitDecreaseConfirm = false
-    var storageErrorMessage: String?
+    var errorMessage: String?
 
     init(dbManager: DatabaseManager) {
         self.dbManager = dbManager
@@ -77,7 +77,7 @@ final class SettingsViewModel {
             _ = try await storageGuard.reconcile(maxDataMb: maxDataMb)   // may clear all history
         } catch {
             // Limit is already persisted (lower); cleanup failed, so the DB may still be over.
-            storageErrorMessage = "Couldn't free space: \(error.localizedDescription)"
+            errorMessage = "Couldn't free space: \(error.localizedDescription)"
         }
         await refreshFooter()
     }
@@ -90,7 +90,7 @@ final class SettingsViewModel {
         do {
             try await storageGuard.deleteAllHistory()
         } catch {
-            storageErrorMessage = "Couldn't delete history: \(error.localizedDescription)"
+            errorMessage = "Couldn't delete history: \(error.localizedDescription)"
         }
         await refreshFooter()      // existing private method updates sessionCount + dbSizeBytes
     }

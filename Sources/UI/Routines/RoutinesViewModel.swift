@@ -54,7 +54,7 @@ final class RoutinesViewModel {
     func delete(_ routine: Routine) async {
         let repo = RoutineRepository(dbManager: dbManager)
         do {
-            try await repo.delete(clientUUID: routine.clientUUID)
+            try await repo.delete(id: routine.clientUUID)
             await load()          // refresh routines + activeCount + summaries
         } catch {
             // Leave previous state on error (matches load()'s silent-failure convention)

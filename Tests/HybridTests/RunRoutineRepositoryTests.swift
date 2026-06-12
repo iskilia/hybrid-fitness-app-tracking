@@ -5,7 +5,7 @@ import SQLite3
 /// PR E — de-SQL RunRoutineDetailViewModel: covers the repository methods that replaced
 /// the VM's raw SQL (RoutineRepository.addRun, SessionRunRepository.templateIDs).
 @MainActor
-final class Pass11RunRoutineDeSqlTests: XCTestCase {
+final class RunRoutineRepositoryTests: XCTestCase {
 
     private func makeTempDB() throws -> DatabaseManager {
         let tmp = FileManager.default.temporaryDirectory

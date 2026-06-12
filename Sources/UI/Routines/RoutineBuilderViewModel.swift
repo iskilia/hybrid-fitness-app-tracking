@@ -135,14 +135,8 @@ final class RoutineBuilderViewModel {
                 pendingInsert = insert
                 showEvictionConfirm = true
             }
-        } catch let dbErr as DatabaseError {
-            if case .conflict(let msg) = dbErr {
-                errorMessage = msg
-            } else {
-                errorMessage = dbErr.localizedDescription
-            }
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userMessage
         }
     }
 
@@ -155,7 +149,7 @@ final class RoutineBuilderViewModel {
             case .fitted:     didCreate = true
             case .impossible: showImpossibleAlert = true
             }
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage = error.userMessage }
     }
 
     func cancelEviction() {

@@ -4,7 +4,7 @@ import SQLite3
 
 /// Pass 8 — feedback-3: manual run pace (MM:SS wheel) + delete-all redirect.
 @MainActor
-final class Pass8RunPaceSettingsTests: XCTestCase {
+final class RunPaceSettingsTests: XCTestCase {
 
     // MARK: - Helpers
 
@@ -88,7 +88,7 @@ final class Pass8RunPaceSettingsTests: XCTestCase {
         let settingsVM = SettingsViewModel(dbManager: db)
         await settingsVM.deleteAllHistory()
 
-        XCTAssertNil(settingsVM.storageErrorMessage,
+        XCTAssertNil(settingsVM.errorMessage,
             "deleteAllHistory must succeed (no error → view pops to Home)")
 
         let after = try await db.read { handle -> Int in

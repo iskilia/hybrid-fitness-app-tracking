@@ -7,7 +7,7 @@ final class HomeViewModel {
     var stats: WeekStats?
     var routines: [Routine] = []
     // Set when load() fails; surfaced to the user via an alert in HomeView.
-    var loadError: String?
+    var errorMessage: String?
     // Maps routine integer ID -> last performed date (nil = never)
     var lastPerformed: [Int: Date] = [:]
     // Maps routine integer ID -> (exerciseCount, runCount)
@@ -56,7 +56,7 @@ final class HomeViewModel {
             self.summaries = sumMap
         } catch {
             // Leave previous state on error; surface a reportable message to the user.
-            loadError = error.localizedDescription
+            errorMessage = error.localizedDescription
         }
     }
 

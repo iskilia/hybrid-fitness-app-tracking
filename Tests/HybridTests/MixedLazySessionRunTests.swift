@@ -4,7 +4,7 @@ import SQLite3
 
 /// PR D — lazy session_run creation (:195) + per-block run duration (:248).
 @MainActor
-final class Pass13MixedLazyRunTests: XCTestCase {
+final class MixedLazySessionRunTests: XCTestCase {
 
     private func makeTempDB() throws -> DatabaseManager {
         let tmp = FileManager.default.temporaryDirectory

@@ -4,7 +4,7 @@ import SQLite3
 
 /// Pass 6 — Sessions feedback: persist-on-finish, builder targets, mixed detail, mixed session, type round-trip.
 @MainActor
-final class Pass6SessionsFeedbackTests: XCTestCase {
+final class SessionPersistenceTests: XCTestCase {
 
     // MARK: - Helpers
 

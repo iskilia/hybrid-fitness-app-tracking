@@ -178,20 +178,7 @@ private struct RunTypeRow: View {
     }
 
     private var metaLine: String {
-        var parts: [String] = [template.runType.rawValue]
-        if let km = template.targetTotalDistanceKm {
-            let s = km.truncatingRemainder(dividingBy: 1) == 0
-                ? "\(Int(km)).0 KM" : String(format: "%.1f KM", km)
-            parts.append(s)
-        }
-        if let paceMin = template.targetPaceSecsMin {
-            let m = paceMin / 60; let s = paceMin % 60
-            parts.append(String(format: "%d:%02d /KM", m, s))
-        }
-        if let bMin = template.hrBpmMin, let bMax = template.hrBpmMax {
-            parts.append("\(bMin)\u{2013}\(bMax) BPM")
-        }
-        return parts.joined(separator: " \u{B7} ")
+        template.metaLine(includeRunType: true, includeBpm: true, includeZone: false)
     }
 }
 

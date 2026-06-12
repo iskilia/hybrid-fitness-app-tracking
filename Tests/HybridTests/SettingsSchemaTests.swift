@@ -9,7 +9,7 @@ import SQLite3
 ///  2. UserProfileRepository upsert / get round-trip with maxDataMb.
 ///  3. Smoke-level CRUD for sessions and routines against the rewritten schema.
 ///  4. Failure / edge cases.
-final class Pass1SettingsTests: XCTestCase {
+final class SettingsSchemaTests: XCTestCase {
 
     // MARK: - Per-test raw in-memory DB (for PRAGMA-level checks)
 

@@ -5,7 +5,7 @@ import SQLite3
 /// PR B review follow-up — focused coverage for the centralized SetRowPersistence mapping
 /// (reps vs time vs distance, km vs mi → metres, empty-row skip).
 @MainActor
-final class Pass10SetRowPersistenceTests: XCTestCase {
+final class SetRowPersistenceTests: XCTestCase {
 
     private func makeTempDB() throws -> DatabaseManager {
         let tmp = FileManager.default.temporaryDirectory

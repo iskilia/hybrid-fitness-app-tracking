@@ -205,7 +205,7 @@ final class LiftActiveSessionViewModel {
                 repo: sessionSetRepo
             )
         } catch {
-            errorMessage = "Couldn't save set: \(error.localizedDescription)"
+            errorMessage = "Couldn't save set: \(error.userMessage)"
         }
     }
 

@@ -17,17 +17,7 @@ struct HomeView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbarContent }
         .task { await viewModel.load() }
-        .alert(
-            "Couldn't load Home",
-            isPresented: Binding(
-                get: { viewModel.loadError != nil },
-                set: { if !$0 { viewModel.loadError = nil } }
-            )
-        ) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(viewModel.loadError ?? "")
-        }
+        .errorAlert("Couldn't load Home", message: $viewModel.errorMessage)
     }
 
     // MARK: - Greeting

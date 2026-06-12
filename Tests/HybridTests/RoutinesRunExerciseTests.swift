@@ -3,7 +3,7 @@ import SQLite3
 @testable import Hybrid
 
 /// Pass 4 — Routine builder + "Run" exercise + distance-set tests.
-final class Pass4RoutinesRunTests: XCTestCase {
+final class RoutinesRunExerciseTests: XCTestCase {
 
     // MARK: - Helpers
 

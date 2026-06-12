@@ -40,17 +40,6 @@ public struct LastExecutionSummary: Sendable, Equatable {
 
 // MARK: - Private helpers
 
-private func formattedDuration(_ totalSecs: Int) -> String {
-    let h = totalSecs / 3600
-    let m = (totalSecs % 3600) / 60
-    let s = totalSecs % 60
-    if h > 0 {
-        return String(format: "%d:%02d:%02d", h, m, s)
-    } else {
-        return String(format: "%02d:%02d", m, s)
-    }
-}
-
 private func relativeString(from date: Date) -> String {
     let formatter = RelativeDateTimeFormatter()
     formatter.unitsStyle = .spellOut

@@ -5,7 +5,7 @@ import SQLite3
 /// Exercise history range selector — the chart loads ALL history (no count cap,
 /// no month cutoff) so the user can scroll across older windows. These cover the
 /// unbounded query paths (`limit: nil`, `monthsBack: nil`).
-final class Pass15HistoryRangeTests: XCTestCase {
+final class ExerciseHistoryRangeTests: XCTestCase {
 
     private var db: DatabaseManager!
     private var sessions: SessionRepository!

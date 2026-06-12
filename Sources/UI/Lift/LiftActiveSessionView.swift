@@ -67,17 +67,7 @@ struct LiftActiveSessionView: View {
             }
             Button("Cancel", role: .cancel) { router?.popToRoot() }
         }
-        .alert(
-            "Couldn't free space",
-            isPresented: Binding(
-                get: { viewModel.errorMessage != nil },
-                set: { if !$0 { viewModel.errorMessage = nil } }
-            )
-        ) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(viewModel.errorMessage ?? "")
-        }
+        .errorAlert("Couldn't free space", message: $viewModel.errorMessage)
     }
 
     // MARK: - Subviews
@@ -155,10 +145,8 @@ struct LiftActiveSessionView: View {
     // MARK: - Elapsed timer
 
     private var elapsedString: String {
-        guard let start = viewModel.session?.startedAt else { return "00:00" }
+        guard let start = viewModel.session?.startedAt else { return formattedDuration(0) }
         let elapsed = Int(Date().timeIntervalSince(start))
-        let minutes = elapsed / 60
-        let seconds = elapsed % 60
-        return String(format: "%02d:%02d", minutes, seconds)
+        return formattedDuration(elapsed)
     }
 }

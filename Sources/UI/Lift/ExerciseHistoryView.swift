@@ -212,9 +212,7 @@ struct ExerciseHistoryView: View {
     }
 
     private func formattedDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEE MMM d"
-        return formatter.string(from: date)
+        date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
     }
 }
 

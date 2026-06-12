@@ -4,7 +4,7 @@ import SwiftUI
 
 struct RunActiveSessionView: View {
     let sessionID: UUID
-    @State private var vm: RunActiveSessionViewModel
+    @State private var viewModel: RunActiveSessionViewModel
     @Environment(\.router) private var router
     @State private var showSummary = false
     @State private var showPaceSheet = false
@@ -14,7 +14,7 @@ struct RunActiveSessionView: View {
     init(sessionID: UUID, dbManager: DatabaseManager) {
         self.sessionID = sessionID
         self.dbManager = dbManager
-        _vm = State(initialValue: RunActiveSessionViewModel(dbManager: dbManager))
+        _viewModel = State(initialValue: RunActiveSessionViewModel(dbManager: dbManager))
     }
 
     var body: some View {
@@ -24,7 +24,7 @@ struct RunActiveSessionView: View {
                 timerSection
                 Divider().background(AppColor.divider)
                 metricsSection
-                if !vm.intervals.isEmpty { intervalStrip }
+                if !viewModel.intervals.isEmpty { intervalStrip }
                 Spacer()
                 controlButtons
             }
@@ -32,9 +32,9 @@ struct RunActiveSessionView: View {
         .navigationBarBackButtonHidden(true)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbarTitle }
-        .task { await vm.start(sessionID: sessionID) }
+        .task { await viewModel.start(sessionID: sessionID) }
         .sheet(isPresented: $showPaceSheet) {
-            let bindable = Bindable(vm)
+            let bindable = Bindable(viewModel)
             PacePickerSheet(
                 minutes: bindable.paceMinutes,
                 seconds: bindable.paceSeconds
@@ -42,43 +42,33 @@ struct RunActiveSessionView: View {
         }
         .sheet(isPresented: $showSummary) {
             RunSummaryView(
-                sessionRunID: vm.sessionRun?.clientUUID ?? UUID(),
+                sessionRunID: viewModel.sessionRun?.clientUUID ?? UUID(),
                 dbManager: dbManager
             ) {
                 showSummary = false
                 Task {
-                    let done = await vm.checkStorageAfterFinish()
+                    let done = await viewModel.checkStorageAfterFinish()
                     if done { router?.popToRoot() }
                 }
             }
         }
         .confirmationDialog(
             "Your storage limit is full. Finishing will delete your oldest history. Continue?",
-            isPresented: $vm.showStorageFullConfirm,
+            isPresented: $viewModel.showStorageFullConfirm,
             titleVisibility: .visible
         ) {
             Button("Continue", role: .destructive) {
-                Task { if await vm.confirmStorageEviction() { router?.popToRoot() } }
+                Task { if await viewModel.confirmStorageEviction() { router?.popToRoot() } }
             }
             Button("Cancel", role: .cancel) { router?.popToRoot() }
         }
-        .alert(
-            "Couldn't free space",
-            isPresented: Binding(
-                get: { vm.errorMessage != nil },
-                set: { if !$0 { vm.errorMessage = nil } }
-            )
-        ) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(vm.errorMessage ?? "")
-        }
+        .errorAlert("Couldn't free space", message: $viewModel.errorMessage)
     }
 
     // MARK: - Timer
 
     private var timerSection: some View {
-        Text(vm.elapsedFormatted)
+        Text(viewModel.elapsedFormatted)
             .font(AppFont.metricLarge)
             .monospacedDigit()
             .foregroundStyle(AppColor.textPrimary)
@@ -89,13 +79,13 @@ struct RunActiveSessionView: View {
     // MARK: - Metrics grid
 
     private var metricsSection: some View {
-        let bindable = Bindable(vm)
+        let bindable = Bindable(viewModel)
         return HStack(spacing: AppSpacing.sm) {
             DistanceTile(distanceText: bindable.distanceText)
-            PaceTile(value: vm.paceDisplay) { showPaceSheet = true }
+            PaceTile(value: viewModel.paceDisplay) { showPaceSheet = true }
             HRTile(hrText: bindable.hrText,
-                   targetMin: vm.runTemplate?.hrBpmMin,
-                   targetMax: vm.runTemplate?.hrBpmMax)
+                   targetMin: viewModel.runTemplate?.hrBpmMin,
+                   targetMax: viewModel.runTemplate?.hrBpmMax)
         }
         .padding(.horizontal, AppSpacing.lg)
         .padding(.vertical, AppSpacing.xl)
@@ -104,7 +94,7 @@ struct RunActiveSessionView: View {
     // MARK: - Interval strip
 
     private var intervalStrip: some View {
-        IntervalStripView(intervals: vm.intervals, current: vm.currentInterval)
+        IntervalStripView(intervals: viewModel.intervals, current: viewModel.currentInterval)
             .padding(.horizontal, AppSpacing.lg)
     }
 
@@ -112,11 +102,11 @@ struct RunActiveSessionView: View {
 
     private var controlButtons: some View {
         HStack(spacing: AppSpacing.md) {
-            Button(vm.isPaused ? "RESUME" : "PAUSE") { vm.togglePause() }
+            Button(viewModel.isPaused ? "RESUME" : "PAUSE") { viewModel.togglePause() }
                 .buttonStyle(SecondaryButtonStyle())
             Button("FINISH") {
                 Task {
-                    await vm.finish()
+                    await viewModel.finish()
                     showSummary = true
                 }
             }
@@ -128,7 +118,7 @@ struct RunActiveSessionView: View {
 
     private var toolbarTitle: some ToolbarContent {
         ToolbarItem(placement: .principal) {
-            Text(vm.runTemplate?.name ?? "RUN")
+            Text(viewModel.runTemplate?.name ?? "RUN")
                 .font(AppFont.headline)
                 .foregroundStyle(AppColor.textPrimary)
         }

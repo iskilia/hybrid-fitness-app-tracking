@@ -243,13 +243,7 @@ final class RunActiveSessionViewModel {
 
 extension RunActiveSessionViewModel {
     var elapsedFormatted: String {
-        let h = elapsedSec / 3600
-        let m = (elapsedSec % 3600) / 60
-        let s = elapsedSec % 60
-        if h > 0 {
-            return String(format: "%02d:%02d:%02d", h, m, s)
-        }
-        return String(format: "%02d:%02d", m, s)
+        formattedDuration(elapsedSec)
     }
 
     var paceFormatted: String {
