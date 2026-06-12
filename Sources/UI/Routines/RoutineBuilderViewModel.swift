@@ -149,7 +149,7 @@ final class RoutineBuilderViewModel {
             case .fitted:     didCreate = true
             case .impossible: showImpossibleAlert = true
             }
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage = error.userMessage }
     }
 
     func cancelEviction() {

@@ -173,7 +173,7 @@ final class CustomExerciseEditorViewModel {
             case .fitted:     didSave = true
             case .impossible: showImpossibleAlert = true
             }
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage = error.userMessage }
     }
 
     func cancelEviction() {

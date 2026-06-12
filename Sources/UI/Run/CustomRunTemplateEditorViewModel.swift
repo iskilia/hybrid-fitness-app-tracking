@@ -101,7 +101,7 @@ final class CustomRunTemplateEditorViewModel {
             try await repo.create(template, blocks: runBlocks)
             return true
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userMessage
             return false
         }
     }
