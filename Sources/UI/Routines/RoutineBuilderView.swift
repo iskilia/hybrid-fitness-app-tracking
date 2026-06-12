@@ -211,7 +211,7 @@ private extension RoutineBuilderView {
 /// Swipe-to-delete for rows hosted in a ScrollView (where List's
 /// .swipeActions isn't available). Swipe left past half the reveal
 /// width to open; tap the trash to delete, swipe right to close.
-private struct SwipeToDeleteRow<Content: View>: View {
+struct SwipeToDeleteRow<Content: View>: View {
     let onDelete: () -> Void
     @ViewBuilder let content: () -> Content
 
