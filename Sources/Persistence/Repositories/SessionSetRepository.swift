@@ -57,6 +57,22 @@ struct SessionSetRepository {
         }
     }
 
+    // MARK: - Delete all sets for one exercise in a session
+
+    /// Removes every `session_set` row for the given exercise within a session.
+    /// Used when an exercise is deleted from — or swapped out of — an in-progress session.
+    func deleteAll(sessionID: UUID, exerciseID: UUID) async throws {
+        try await dbManager.transaction { db in
+            let sessionRowID = try resolveSessionID(db, uuid: sessionID)
+            let exerciseRowID = try resolveExerciseID(db, uuid: exerciseID)
+            let stmt = try prepare(db, "DELETE FROM session_set WHERE session_id = ? AND exercise_id = ?;")
+            defer { finalize(stmt) }
+            bindInt(stmt, 1, sessionRowID)
+            bindInt(stmt, 2, exerciseRowID)
+            _ = try step(stmt)
+        }
+    }
+
     // MARK: - List by session + exercise
 
     func list(sessionID: UUID, exerciseID: UUID) async throws -> [SessionSet] {

@@ -6,8 +6,8 @@ struct RoutineBuilderView: View {
     @State private var showRunPicker = false
     @Environment(\.router) private var router
 
-    init(dbManager: DatabaseManager) {
-        self._viewModel = State(initialValue: RoutineBuilderViewModel(dbManager: dbManager))
+    init(dbManager: DatabaseManager, editRoutineID: UUID? = nil) {
+        self._viewModel = State(initialValue: RoutineBuilderViewModel(dbManager: dbManager, editRoutineID: editRoutineID))
     }
 
     var body: some View {
@@ -94,31 +94,73 @@ private extension RoutineBuilderView {
         .padding(.bottom, AppSpacing.xl)
     }
 
+    @ViewBuilder
     var exerciseListSection: some View {
+        let canReorder = viewModel.entries.count >= 2
         VStack(spacing: 0) {
             ForEach(viewModel.entries) { entry in
-                @Bindable var bindableEntry = entry
-                SwipeToDeleteRow(onDelete: { viewModel.remove(entry) }) {
-                    VStack(spacing: 0) {
-                        ExerciseRow(
-                            exercise: entry.exercise,
-                            equipment: nil,
-                            primaryMuscle: nil,
-                            trailingContent: nil
-                        )
-                        HStack(spacing: AppSpacing.md) {
-                            entryField(label: "SETS", value: $bindableEntry.targetSets)
-                            entryField(label: "REP MIN", value: $bindableEntry.targetRepMin)
-                            entryField(label: "REP MAX", value: $bindableEntry.targetRepMax)
-                        }
-                        .padding(.horizontal, AppSpacing.lg)
-                        .padding(.bottom, AppSpacing.sm)
-                    }
-                }
+                exerciseEntryRow(entry, canReorder: canReorder)
                 Divider()
                     .background(AppColor.divider)
                     .padding(.leading, AppSpacing.lg + 56 + AppSpacing.md)
             }
+        }
+    }
+
+    @ViewBuilder
+    func exerciseEntryRow(_ entry: ExerciseEntry, canReorder: Bool) -> some View {
+        @Bindable var bindableEntry = entry
+        let row = SwipeToDeleteRow(onDelete: { viewModel.remove(entry) }) {
+            VStack(spacing: 0) {
+                ExerciseRow(
+                    exercise: entry.exercise,
+                    equipment: nil,
+                    primaryMuscle: nil,
+                    trailingContent: canReorder
+                        ? AnyView(Image(systemName: "line.3.horizontal")
+                            .foregroundStyle(AppColor.textSecondary))
+                        : nil
+                )
+                HStack(spacing: AppSpacing.md) {
+                    entryField(label: "SETS", value: $bindableEntry.targetSets)
+                    entryField(label: "REP MIN", value: $bindableEntry.targetRepMin)
+                    entryField(label: "REP MAX", value: $bindableEntry.targetRepMax)
+                }
+                .padding(.horizontal, AppSpacing.lg)
+                .padding(.bottom, AppSpacing.sm)
+
+                notesField(text: $bindableEntry.notes)
+                    .padding(.horizontal, AppSpacing.lg)
+                    .padding(.bottom, AppSpacing.sm)
+            }
+        }
+
+        if canReorder {
+            row
+                .draggable(entry.id.uuidString)
+                .dropDestination(for: String.self) { items, _ in
+                    guard let droppedID = items.first.flatMap({ UUID(uuidString: $0) }) else { return false }
+                    viewModel.moveEntry(fromID: droppedID, toID: entry.id)
+                    return true
+                }
+        } else {
+            row
+        }
+    }
+
+    func notesField(text: Binding<String>) -> some View {
+        VStack(alignment: .leading, spacing: AppSpacing.xxs) {
+            Text("NOTES")
+                .font(AppFont.caption)
+                .foregroundStyle(AppColor.textSecondary)
+            TextField("Add a note", text: text, axis: .vertical)
+                .font(AppFont.caption)
+                .foregroundStyle(AppColor.textPrimary)
+                .lineLimit(1...3)
+                .padding(.horizontal, AppSpacing.sm)
+                .padding(.vertical, AppSpacing.xs)
+                .background(AppColor.surface)
+                .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
         }
     }
 
@@ -173,7 +215,7 @@ private extension RoutineBuilderView {
         Button {
             Task { await viewModel.create() }
         } label: {
-            Text("CREATE")
+            Text(viewModel.isEditing ? "SAVE" : "CREATE")
                 .font(AppFont.title)
                 .fontWeight(.bold)
                 .foregroundStyle(.white)

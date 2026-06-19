@@ -10,6 +10,8 @@ enum Route: Hashable, Sendable {
     /// without an async fetch. Update callers to pass `routine.type`.
     case routineDetail(UUID, WorkoutType)
     case routineBuilder
+    /// Opens the builder in edit mode, prefilled from the routine's saved state.
+    case routineEditor(UUID)
     case session(UUID)
     case exerciseLibrary
     case exerciseHistory(UUID)

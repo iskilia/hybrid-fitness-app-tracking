@@ -26,9 +26,18 @@ struct RunRoutineDetailView: View {
         .background(AppColor.background)
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom) { startButton }
-        .task {
-            await viewModel.load(routineID: routineID)
-            await viewModel.loadLastExecution(routineID: routineID)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Edit") { router?.push(.routineEditor(routineID)) }
+                    .foregroundStyle(AppColor.accent)
+            }
+        }
+        // onAppear (not task) so returning from the editor reloads the edited routine.
+        .onAppear {
+            Task {
+                await viewModel.load(routineID: routineID)
+                await viewModel.loadLastExecution(routineID: routineID)
+            }
         }
         .sheet(isPresented: $showRunPicker) {
             if let db = dbManager {

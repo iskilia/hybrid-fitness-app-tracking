@@ -4,6 +4,8 @@ struct LiftActiveSessionView: View {
     let sessionID: UUID
     @State private var viewModel: LiftActiveSessionViewModel
     @State private var showAbandonAlert = false
+    @State private var swapTargetCard: ExerciseCardState?
+    @State private var deleteTargetCard: ExerciseCardState?
     @Environment(\.databaseManager) private var dbManager
     @Environment(\.router) private var router
 
@@ -32,7 +34,9 @@ struct LiftActiveSessionView: View {
                                 onMarkAllDone: { Task { await viewModel.markCardDone(card, exerciseOrder: index + 1) } },
                                 onNextBlock: { viewModel.advanceToNextCard(after: card) },
                                 onAddSet: { viewModel.addSet(to: card) },
-                                onRowCommit: { row in viewModel.persistSet(row, in: card, exerciseOrder: index + 1) }
+                                onRowCommit: { row in viewModel.persistSet(row, in: card, exerciseOrder: index + 1) },
+                                onSwap: { swapTargetCard = card },
+                                onDelete: { deleteTargetCard = card }
                             )
                         )
                     }
@@ -68,6 +72,31 @@ struct LiftActiveSessionView: View {
             Button("Cancel", role: .cancel) { router?.popToRoot() }
         }
         .errorAlert("Couldn't free space", message: $viewModel.errorMessage)
+        .sheet(item: $swapTargetCard) { card in
+            if let db = dbManager {
+                ExerciseLibraryView(dbManager: db, onSelect: { exercise in
+                    Task { await viewModel.swapExercise(in: card, to: exercise) }
+                    swapTargetCard = nil
+                })
+            }
+        }
+        .confirmationDialog(
+            "Remove this exercise from the session?",
+            isPresented: Binding(
+                get: { deleteTargetCard != nil },
+                set: { if !$0 { deleteTargetCard = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: deleteTargetCard
+        ) { card in
+            Button("Delete \(card.exercise.name)", role: .destructive) {
+                Task { await viewModel.deleteCard(card) }
+                deleteTargetCard = nil
+            }
+            Button("Cancel", role: .cancel) { deleteTargetCard = nil }
+        } message: { _ in
+            Text("Any sets logged for this exercise will be discarded.")
+        }
     }
 
     // MARK: - Subviews

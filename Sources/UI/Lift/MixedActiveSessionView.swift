@@ -5,7 +5,10 @@ import SwiftUI
 struct MixedActiveSessionView: View {
     let sessionID: UUID
     @State private var viewModel: MixedActiveSessionViewModel
+    @State private var swapTargetBlock: MixedBlockState?
+    @State private var deleteTargetBlock: MixedBlockState?
     @Environment(\.router) private var router
+    @Environment(\.databaseManager) private var dbManager
 
     init(sessionID: UUID, dbManager: DatabaseManager) {
         self.sessionID = sessionID
@@ -34,7 +37,9 @@ struct MixedActiveSessionView: View {
                                         actions: .init(
                                             onTap: { viewModel.expand(block) },
                                             onMarkAllDone: { Task { await viewModel.markLiftBlockDone(block) } },
-                                            onNextBlock: { viewModel.advanceToNextBlock(after: block) }
+                                            onNextBlock: { viewModel.advanceToNextBlock(after: block) },
+                                            onSwap: { swapTargetBlock = block },
+                                            onDelete: { deleteTargetBlock = block }
                                         )
                                     )
                                 } else {
@@ -77,6 +82,31 @@ struct MixedActiveSessionView: View {
             Button("Cancel", role: .cancel) { router?.popToRoot() }
         }
         .errorAlert("Couldn't free space", message: $viewModel.errorMessage)
+        .sheet(item: $swapTargetBlock) { block in
+            if let db = dbManager {
+                ExerciseLibraryView(dbManager: db, onSelect: { exercise in
+                    Task { await viewModel.swapExercise(in: block, to: exercise) }
+                    swapTargetBlock = nil
+                })
+            }
+        }
+        .confirmationDialog(
+            "Remove this exercise from the session?",
+            isPresented: Binding(
+                get: { deleteTargetBlock != nil },
+                set: { if !$0 { deleteTargetBlock = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: deleteTargetBlock
+        ) { block in
+            Button("Delete \(block.exercise?.name ?? "Exercise")", role: .destructive) {
+                Task { await viewModel.deleteBlock(block) }
+                deleteTargetBlock = nil
+            }
+            Button("Cancel", role: .cancel) { deleteTargetBlock = nil }
+        } message: { _ in
+            Text("Any sets logged for this exercise will be discarded.")
+        }
     }
 
     // MARK: - Sticky header
