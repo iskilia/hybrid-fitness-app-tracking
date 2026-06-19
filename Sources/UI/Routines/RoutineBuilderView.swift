@@ -107,19 +107,17 @@ private extension RoutineBuilderView {
         }
     }
 
-    @ViewBuilder
     func exerciseEntryRow(_ entry: ExerciseEntry, canReorder: Bool) -> some View {
         @Bindable var bindableEntry = entry
-        let row = SwipeToDeleteRow(onDelete: { viewModel.remove(entry) }) {
+        let index = viewModel.entries.firstIndex { $0.id == entry.id } ?? 0
+        return SwipeToDeleteRow(onDelete: { viewModel.remove(entry) }) {
             VStack(spacing: 0) {
                 ExerciseRow(
                     exercise: entry.exercise,
                     equipment: nil,
                     primaryMuscle: nil,
                     trailingContent: canReorder
-                        ? AnyView(Image(systemName: "line.3.horizontal")
-                            .foregroundStyle(AppColor.textSecondary)
-                            .accessibilityLabel("Drag to reorder"))
+                        ? AnyView(reorderControls(entry, index: index))
                         : nil
                 )
                 HStack(spacing: AppSpacing.md) {
@@ -135,18 +133,25 @@ private extension RoutineBuilderView {
                     .padding(.bottom, AppSpacing.sm)
             }
         }
+    }
 
-        if canReorder {
-            row
-                .draggable(entry.id.uuidString)
-                .dropDestination(for: String.self) { items, _ in
-                    guard let droppedID = items.first.flatMap({ UUID(uuidString: $0) }) else { return false }
-                    viewModel.moveEntry(fromID: droppedID, toID: entry.id)
-                    return true
-                }
-        } else {
-            row
+    func reorderControls(_ entry: ExerciseEntry, index: Int) -> some View {
+        VStack(spacing: AppSpacing.xs) {
+            Button { viewModel.moveUp(entry) } label: {
+                Image(systemName: "chevron.up")
+            }
+            .disabled(index == 0)
+            .accessibilityLabel("Move up")
+
+            Button { viewModel.moveDown(entry) } label: {
+                Image(systemName: "chevron.down")
+            }
+            .disabled(index == viewModel.entries.count - 1)
+            .accessibilityLabel("Move down")
         }
+        .font(AppFont.caption)
+        .foregroundStyle(AppColor.accent)
+        .buttonStyle(.plain)
     }
 
     func notesField(text: Binding<String>) -> some View {

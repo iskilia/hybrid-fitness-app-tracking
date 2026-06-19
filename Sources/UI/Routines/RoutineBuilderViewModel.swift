@@ -99,16 +99,15 @@ final class RoutineBuilderViewModel {
         }
     }
 
-    /// Drag-reorder for the exercise list (feature: reorder when ≥2 exercises).
-    /// Moves the dragged entry to the dropped-on entry's position.
-    func moveEntry(fromID: UUID, toID: UUID) {
-        guard fromID != toID,
-              let from = entries.firstIndex(where: { $0.id == fromID }),
-              let to = entries.firstIndex(where: { $0.id == toID })
-        else { return }
-        let item = entries.remove(at: from)
-        let insertIndex = to > from ? to - 1 : to
-        entries.insert(item, at: insertIndex)
+    /// Reorder the exercise list via up/down controls (feature: reorder when ≥2 exercises).
+    func moveUp(_ entry: ExerciseEntry) {
+        guard let i = entries.firstIndex(where: { $0.id == entry.id }), i > 0 else { return }
+        entries.swapAt(i, i - 1)
+    }
+
+    func moveDown(_ entry: ExerciseEntry) {
+        guard let i = entries.firstIndex(where: { $0.id == entry.id }), i < entries.count - 1 else { return }
+        entries.swapAt(i, i + 1)
     }
 
     func add(_ exercise: Exercise) {

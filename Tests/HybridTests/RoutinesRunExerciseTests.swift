@@ -984,8 +984,8 @@ final class RoutinesRunExerciseTests: XCTestCase {
         }
     }
 
-    /// moveEntry reorders the in-memory entries list.
-    func testBuilderMoveEntryReorders() async throws {
+    /// moveUp / moveDown reorder the in-memory entries list and clamp at the ends.
+    func testBuilderMoveUpDownReorders() async throws {
         let db = try makeTempDB()
         let exs = try await distinctExercises(3, db: db)
         XCTAssertEqual(exs.count, 3)
@@ -995,11 +995,21 @@ final class RoutinesRunExerciseTests: XCTestCase {
         await MainActor.run {
             vm.name = "Reorder Routine"
             for ex in exs { vm.add(ex) }
-            // Move the last entry to the front.
-            let last = vm.entries[2]
-            let first = vm.entries[0]
-            vm.moveEntry(fromID: last.id, toID: first.id)
-            XCTAssertEqual(vm.entries[0].exercise.id, exs[2].id, "Dragged entry must move to the front")
+
+            // Move the last entry up twice → it reaches the front.
+            vm.moveUp(vm.entries[2])
+            XCTAssertEqual(vm.entries[1].exercise.id, exs[2].id, "moveUp must swap with the entry above")
+            vm.moveUp(vm.entries[1])
+            XCTAssertEqual(vm.entries[0].exercise.id, exs[2].id, "Repeated moveUp must reach the front")
+
+            // moveUp on the first entry is a no-op (clamped).
+            vm.moveUp(vm.entries[0])
+            XCTAssertEqual(vm.entries[0].exercise.id, exs[2].id, "moveUp on first entry must be a no-op")
+
+            // moveDown on the last entry is a no-op (clamped).
+            let lastID = vm.entries[2].id
+            vm.moveDown(vm.entries[2])
+            XCTAssertEqual(vm.entries[2].id, lastID, "moveDown on last entry must be a no-op")
         }
     }
 
@@ -1026,10 +1036,8 @@ final class RoutinesRunExerciseTests: XCTestCase {
         let vm = await MainActor.run { RoutineBuilderViewModel(dbManager: db, editRoutineID: routineUUID) }
         await vm.load()
         await MainActor.run {
-            // Reorder: move exs[1] to front, and add a note to it.
-            let second = vm.entries[1]
-            let firstID = vm.entries[0].id
-            vm.moveEntry(fromID: second.id, toID: firstID)
+            // Reorder: move exs[1] up to the front, and add a note to it.
+            vm.moveUp(vm.entries[1])
             vm.entries[0].notes = "Now first"
         }
         await vm.create()
