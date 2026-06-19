@@ -59,6 +59,10 @@ struct RootView: View {
             if let db = dbManager {
                 RoutineBuilderView(dbManager: db)
             }
+        case .routineEditor(let id):
+            if let db = dbManager {
+                RoutineBuilderView(dbManager: db, editRoutineID: id)
+            }
         case .session(let id):
             if let db = dbManager {
                 SessionDispatchView(sessionID: id, dbManager: db)

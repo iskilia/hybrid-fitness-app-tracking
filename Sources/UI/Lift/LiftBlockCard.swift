@@ -12,6 +12,10 @@ struct LiftBlockCard: View {
         let onNextBlock: () -> Void
         var onAddSet: (() -> Void)? = nil
         var onRowCommit: ((SetRowState) -> Void)? = nil
+        /// Mid-session: replace this exercise with another. Menu hidden when nil.
+        var onSwap: (() -> Void)? = nil
+        /// Mid-session: remove this exercise from the session. Menu hidden when nil.
+        var onDelete: (() -> Void)? = nil
     }
 
     let blockNumber: Int
@@ -81,11 +85,33 @@ struct LiftBlockCard: View {
                 setDots
             }
 
+            if actions.onSwap != nil || actions.onDelete != nil {
+                editMenu
+            }
+
             Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                 .font(AppFont.caption)
                 .foregroundStyle(AppColor.textSecondary)
         }
         .padding(AppSpacing.md)
+    }
+
+    private var editMenu: some View {
+        Menu {
+            if let onSwap = actions.onSwap {
+                Button { onSwap() } label: { Label("Change Exercise", systemImage: "arrow.triangle.2.circlepath") }
+            }
+            if let onDelete = actions.onDelete {
+                Button(role: .destructive) { onDelete() } label: { Label("Delete Exercise", systemImage: "trash") }
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(AppFont.caption)
+                .foregroundStyle(AppColor.textSecondary)
+                .frame(width: 28, height: 28)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel("Edit exercise")
     }
 
     private var statusNode: some View {

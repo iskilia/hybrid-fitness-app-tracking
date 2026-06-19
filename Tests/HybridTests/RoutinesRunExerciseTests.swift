@@ -887,6 +887,169 @@ final class RoutinesRunExerciseTests: XCTestCase {
         XCTAssertEqual(entryCount, 0,
             "addRun must not crash and must leave entries empty when routine is not loaded")
     }
+    // MARK: - Routine editing: notes, reorder, edit-mode save
+
+    /// Helper: fetch N distinct seeded exercises.
+    private func distinctExercises(_ n: Int, db: DatabaseManager) async throws -> [Exercise] {
+        let ids = try await db.read { handle -> [Int] in
+            let stmt = try Hybrid.prepare(handle, "SELECT id FROM exercise WHERE is_custom = 0 LIMIT \(n);")
+            defer { Hybrid.finalize(stmt) }
+            var ids: [Int] = []
+            while try Hybrid.step(stmt) { ids.append(Int(sqlite3_column_int64(stmt, 0))) }
+            return ids
+        }
+        var result: [Exercise] = []
+        for id in ids { result.append(try await makeExercise(id: id, db: db)) }
+        return result
+    }
+
+    /// Create with a per-exercise note persists the note to routine_exercise.notes.
+    func testBuilderCreatePersistsExerciseNotes() async throws {
+        let db = try makeTempDB()
+        let routineRepo = RoutineRepository(dbManager: db)
+        let exercise = try await makeExercise(id: try await anyExerciseID(db), db: db)
+
+        let vm = await MainActor.run { RoutineBuilderViewModel(dbManager: db) }
+        await vm.load()
+        await MainActor.run {
+            vm.name = "Notes Create Routine"
+            vm.add(exercise)
+            vm.entries[0].notes = "Pause at bottom"
+        }
+        await vm.create()
+
+        let routines = try await routineRepo.list()
+        let created = try XCTUnwrap(routines.first { $0.name == "Notes Create Routine" })
+        let reRows = try await routineRepo.listExercises(routineID: created.clientUUID)
+        let re = try XCTUnwrap(reRows.first)
+        XCTAssertEqual(re.notes, "Pause at bottom", "Builder must persist the per-exercise note")
+    }
+
+    /// Blank/whitespace notes persist as nil (not an empty string).
+    func testBuilderCreateBlankNotesPersistAsNil() async throws {
+        let db = try makeTempDB()
+        let routineRepo = RoutineRepository(dbManager: db)
+        let exercise = try await makeExercise(id: try await anyExerciseID(db), db: db)
+
+        let vm = await MainActor.run { RoutineBuilderViewModel(dbManager: db) }
+        await vm.load()
+        await MainActor.run {
+            vm.name = "Blank Notes Routine"
+            vm.add(exercise)
+            vm.entries[0].notes = "   "
+        }
+        await vm.create()
+
+        let routines = try await routineRepo.list()
+        let created = try XCTUnwrap(routines.first { $0.name == "Blank Notes Routine" })
+        let reRows = try await routineRepo.listExercises(routineID: created.clientUUID)
+        let re = try XCTUnwrap(reRows.first)
+        XCTAssertNil(re.notes, "Whitespace-only notes must persist as nil")
+    }
+
+    /// Edit mode prefills name, exercise entries, targets and notes from the saved routine.
+    func testBuilderEditModePrefillsFromExistingRoutine() async throws {
+        let db = try makeTempDB()
+        let routineRepo = RoutineRepository(dbManager: db)
+        let exs = try await distinctExercises(2, db: db)
+        XCTAssertEqual(exs.count, 2, "Precondition: 2 distinct exercises")
+
+        let now = Date()
+        let routineUUID = UUID()
+        let routine = Routine(id: 0, clientUUID: routineUUID, name: "Editable Routine",
+                              type: .lift, sortOrder: 1, createdAt: now, updatedAt: now, deletedAt: nil)
+        let re0 = RoutineExercise(id: 0, clientUUID: UUID(), routineID: 0, exerciseID: exs[0].id,
+                                  sortOrder: 1, targetSets: 4, targetRepMin: 6, targetRepMax: 10,
+                                  targetRPE: nil, targetDurationSecsMin: nil, targetDurationSecsMax: nil,
+                                  notes: "First note", updatedAt: now)
+        let re1 = RoutineExercise(id: 0, clientUUID: UUID(), routineID: 0, exerciseID: exs[1].id,
+                                  sortOrder: 2, targetSets: nil, targetRepMin: nil, targetRepMax: nil,
+                                  targetRPE: nil, targetDurationSecsMin: nil, targetDurationSecsMax: nil,
+                                  notes: nil, updatedAt: now)
+        try await routineRepo.create(routine, exerciseEntries: [re0, re1], runEntries: [])
+
+        let vm = await MainActor.run { RoutineBuilderViewModel(dbManager: db, editRoutineID: routineUUID) }
+        await vm.load()
+
+        await MainActor.run {
+            XCTAssertTrue(vm.isEditing, "isEditing must be true in edit mode")
+            XCTAssertEqual(vm.name, "Editable Routine")
+            XCTAssertEqual(vm.entries.count, 2)
+            XCTAssertEqual(vm.entries[0].exercise.id, exs[0].id, "Entries must load in sort order")
+            XCTAssertEqual(vm.entries[0].targetSets, 4)
+            XCTAssertEqual(vm.entries[0].targetRepMin, 6)
+            XCTAssertEqual(vm.entries[0].targetRepMax, 10)
+            XCTAssertEqual(vm.entries[0].notes, "First note")
+            XCTAssertEqual(vm.entries[1].notes, "", "Nil note must load as empty string")
+        }
+    }
+
+    /// moveEntry reorders the in-memory entries list.
+    func testBuilderMoveEntryReorders() async throws {
+        let db = try makeTempDB()
+        let exs = try await distinctExercises(3, db: db)
+        XCTAssertEqual(exs.count, 3)
+
+        let vm = await MainActor.run { RoutineBuilderViewModel(dbManager: db) }
+        await vm.load()
+        await MainActor.run {
+            vm.name = "Reorder Routine"
+            for ex in exs { vm.add(ex) }
+            // Move the last entry to the front.
+            let last = vm.entries[2]
+            let first = vm.entries[0]
+            vm.moveEntry(fromID: last.id, toID: first.id)
+            XCTAssertEqual(vm.entries[0].exercise.id, exs[2].id, "Dragged entry must move to the front")
+        }
+    }
+
+    /// Edit-mode save persists reordered entries (new sort_order) and edited notes.
+    func testBuilderEditSavePersistsReorderAndNotes() async throws {
+        let db = try makeTempDB()
+        let routineRepo = RoutineRepository(dbManager: db)
+        let exs = try await distinctExercises(2, db: db)
+
+        let now = Date()
+        let routineUUID = UUID()
+        let routine = Routine(id: 0, clientUUID: routineUUID, name: "Reorder Save Routine",
+                              type: .lift, sortOrder: 1, createdAt: now, updatedAt: now, deletedAt: nil)
+        let re0 = RoutineExercise(id: 0, clientUUID: UUID(), routineID: 0, exerciseID: exs[0].id,
+                                  sortOrder: 1, targetSets: nil, targetRepMin: nil, targetRepMax: nil,
+                                  targetRPE: nil, targetDurationSecsMin: nil, targetDurationSecsMax: nil,
+                                  notes: nil, updatedAt: now)
+        let re1 = RoutineExercise(id: 0, clientUUID: UUID(), routineID: 0, exerciseID: exs[1].id,
+                                  sortOrder: 2, targetSets: nil, targetRepMin: nil, targetRepMax: nil,
+                                  targetRPE: nil, targetDurationSecsMin: nil, targetDurationSecsMax: nil,
+                                  notes: nil, updatedAt: now)
+        try await routineRepo.create(routine, exerciseEntries: [re0, re1], runEntries: [])
+
+        let vm = await MainActor.run { RoutineBuilderViewModel(dbManager: db, editRoutineID: routineUUID) }
+        await vm.load()
+        await MainActor.run {
+            // Reorder: move exs[1] to front, and add a note to it.
+            let second = vm.entries[1]
+            let firstID = vm.entries[0].id
+            vm.moveEntry(fromID: second.id, toID: firstID)
+            vm.entries[0].notes = "Now first"
+        }
+        await vm.create()
+
+        let didSave = await MainActor.run { vm.didCreate }
+        XCTAssertTrue(didSave, "Edit-mode create() must set didCreate on success")
+
+        // Routine count must NOT grow (edit, not create).
+        let routines = try await routineRepo.list()
+        XCTAssertEqual(routines.filter { $0.name == "Reorder Save Routine" }.count, 1,
+            "Editing must not create a duplicate routine")
+
+        let reRows = try await routineRepo.listExercises(routineID: routineUUID)
+        XCTAssertEqual(reRows.count, 2)
+        XCTAssertEqual(reRows[0].exerciseID, exs[1].id, "First slot must now be the moved exercise")
+        XCTAssertEqual(reRows[0].notes, "Now first", "Edited note must persist after reorder save")
+        XCTAssertEqual(reRows[0].sortOrder, 1)
+        XCTAssertEqual(reRows[1].exerciseID, exs[0].id)
+        XCTAssertEqual(reRows[1].sortOrder, 2)
+    }
 }
 
 // MARK: - XCTUnwrap overload for Optional with message (convenience)

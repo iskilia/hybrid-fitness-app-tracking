@@ -26,7 +26,15 @@ struct RunRoutineDetailView: View {
         .background(AppColor.background)
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom) { startButton }
-        .task {
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Edit") { router?.push(.routineEditor(routineID)) }
+                    .foregroundStyle(AppColor.accent)
+            }
+        }
+        // Keyed on the nav path so the load re-runs when returning from the editor
+        // (path shrinks on pop), while keeping .task's automatic cancellation.
+        .task(id: router?.path) {
             await viewModel.load(routineID: routineID)
             await viewModel.loadLastExecution(routineID: routineID)
         }

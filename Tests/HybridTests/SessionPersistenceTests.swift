@@ -79,6 +79,36 @@ final class SessionPersistenceTests: XCTestCase {
         }
     }
 
+    private func distinctExercises(_ n: Int, db: DatabaseManager) async throws -> [Exercise] {
+        let ids = try await db.read { handle -> [Int] in
+            let stmt = try Hybrid.prepare(handle, "SELECT id FROM exercise WHERE is_custom = 0 LIMIT \(n);")
+            defer { Hybrid.finalize(stmt) }
+            var ids: [Int] = []
+            while try Hybrid.step(stmt) { ids.append(Int(sqlite3_column_int64(stmt, 0))) }
+            return ids
+        }
+        var result: [Exercise] = []
+        for id in ids { result.append(try await makeExercise(id: id, db: db)) }
+        return result
+    }
+
+    /// Builds a lift routine with the given exercises (sequential sort order) and returns its UUID.
+    private func makeLiftRoutine(_ exercises: [Exercise], name: String, db: DatabaseManager) async throws -> UUID {
+        let routineRepo = RoutineRepository(dbManager: db)
+        let now = Date()
+        let routineUUID = UUID()
+        let routine = Routine(id: 0, clientUUID: routineUUID, name: name,
+                              type: .lift, sortOrder: 1, createdAt: now, updatedAt: now, deletedAt: nil)
+        let res = exercises.enumerated().map { i, ex in
+            RoutineExercise(id: 0, clientUUID: UUID(), routineID: 0, exerciseID: ex.id,
+                            sortOrder: i + 1, targetSets: 1, targetRepMin: 5, targetRepMax: 5,
+                            targetRPE: nil, targetDurationSecsMin: nil, targetDurationSecsMax: nil,
+                            notes: nil, updatedAt: now)
+        }
+        try await routineRepo.create(routine, exerciseEntries: res, runEntries: [])
+        return routineUUID
+    }
+
     private func anyRunTemplate(_ db: DatabaseManager) async throws -> RunTemplate {
         let repo = RunTemplateRepository(dbManager: db)
         let all = try await repo.listAll()
@@ -537,6 +567,191 @@ final class SessionPersistenceTests: XCTestCase {
         XCTAssertNotEqual(fetchedRun?.type,   .mixed)
         XCTAssertNotEqual(fetchedMixed?.type, .lift)
         XCTAssertNotEqual(fetchedMixed?.type, .run)
+    }
+    // MARK: - Mid-session edit: delete / swap exercise
+
+    /// deleteAll removes only the targeted exercise's sets, leaving others intact.
+    func testSessionSetDeleteAllRemovesOnlyThatExercise() async throws {
+        let db = try makeTempDB()
+        let sessions = SessionRepository(dbManager: db)
+        let sets = SessionSetRepository(dbManager: db)
+        let exs = try await distinctExercises(2, db: db)
+
+        let session = try await sessions.start(routineID: nil, type: .lift)
+        for (i, ex) in exs.enumerated() {
+            try await sets.append(SessionSet(
+                id: 0, clientUUID: UUID(), sessionID: session.id, exerciseID: ex.id,
+                exerciseOrder: i + 1, setNumber: 1, setType: .working,
+                weightKg: 50, reps: 5, durationSecs: nil, distanceM: nil,
+                rpe: nil, completedAt: Date(), notes: nil, updatedAt: Date()))
+        }
+
+        try await sets.deleteAll(sessionID: session.clientUUID, exerciseID: exs[0].clientUUID)
+
+        let remaining0 = try await sets.list(sessionID: session.clientUUID, exerciseID: exs[0].clientUUID)
+        let remaining1 = try await sets.list(sessionID: session.clientUUID, exerciseID: exs[1].clientUUID)
+        XCTAssertEqual(remaining0.count, 0, "deleteAll must remove the targeted exercise's sets")
+        XCTAssertEqual(remaining1.count, 1, "deleteAll must not touch other exercises")
+    }
+
+    /// Lift session: deleteCard removes the card and its persisted sets; others survive.
+    func testLiftSessionDeleteCardRemovesCardAndSets() async throws {
+        let db = try makeTempDB()
+        let sessions = SessionRepository(dbManager: db)
+        let exs = try await distinctExercises(2, db: db)
+        let routineUUID = try await makeLiftRoutine(exs, name: "Delete Card Routine", db: db)
+        let session = try await sessions.start(routineID: routineUUID, type: .lift)
+
+        let vm = LiftActiveSessionViewModel(sessionID: session.clientUUID, dbManager: db)
+        await vm.load()
+        XCTAssertEqual(vm.cards.count, 2, "Precondition: 2 cards loaded")
+
+        // Enter + persist data in both cards.
+        vm.cards[0].rows[0].weightText = "60"; vm.cards[0].rows[0].repsText = "5"
+        vm.cards[1].rows[0].weightText = "70"; vm.cards[1].rows[0].repsText = "5"
+        await vm.persistAllRows()
+
+        let target = vm.cards[0]
+        await vm.deleteCard(target)
+
+        XCTAssertEqual(vm.cards.count, 1, "Card must be removed")
+        XCTAssertFalse(vm.cards.contains { $0.id == target.id }, "Deleted card must be gone")
+
+        let deletedSets = try await countRows(db,
+            sql: "SELECT COUNT(*) FROM session_set WHERE session_id = \(session.id) AND exercise_id = \(exs[0].id);")
+        XCTAssertEqual(deletedSets, 0, "Deleted exercise's sets must be removed from the DB")
+        let survivingSets = try await countRows(db,
+            sql: "SELECT COUNT(*) FROM session_set WHERE session_id = \(session.id) AND exercise_id = \(exs[1].id);")
+        XCTAssertGreaterThan(survivingSets, 0, "Other exercise's sets must remain")
+    }
+
+    /// Lift session: swapExercise replaces the card in place and clears the old sets.
+    func testLiftSessionSwapExerciseReplacesCardAndClearsOldSets() async throws {
+        let db = try makeTempDB()
+        let sessions = SessionRepository(dbManager: db)
+        let exs = try await distinctExercises(2, db: db)
+        // Routine has only exs[0]; we'll swap to exs[1].
+        let routineUUID = try await makeLiftRoutine([exs[0]], name: "Swap Routine", db: db)
+        let session = try await sessions.start(routineID: routineUUID, type: .lift)
+
+        let vm = LiftActiveSessionViewModel(sessionID: session.clientUUID, dbManager: db)
+        await vm.load()
+        XCTAssertEqual(vm.cards.count, 1)
+        vm.cards[0].rows[0].weightText = "80"; vm.cards[0].rows[0].repsText = "5"
+        await vm.persistAllRows()
+
+        let original = vm.cards[0]
+        await vm.swapExercise(in: original, to: exs[1])
+
+        XCTAssertEqual(vm.cards.count, 1, "Swap must keep the same number of cards")
+        XCTAssertEqual(vm.cards[0].exercise.id, exs[1].id, "Card must now show the new exercise")
+
+        let oldSets = try await countRows(db,
+            sql: "SELECT COUNT(*) FROM session_set WHERE session_id = \(session.id) AND exercise_id = \(exs[0].id);")
+        XCTAssertEqual(oldSets, 0, "Swapped-out exercise's sets must be discarded")
+
+        // Logging a set for the swapped-IN exercise must persist (validates the
+        // transient RoutineExercise(routineID: 0) doesn't break the write path).
+        vm.cards[0].rows[0].weightText = "90"; vm.cards[0].rows[0].repsText = "3"
+        await vm.persistAllRows()
+        let newSets = try await countRows(db,
+            sql: "SELECT COUNT(*) FROM session_set WHERE session_id = \(session.id) AND exercise_id = \(exs[1].id);")
+        XCTAssertGreaterThan(newSets, 0, "Sets logged for the swapped-in exercise must persist")
+    }
+
+    /// Lift session: swapping to an exercise already in the session is rejected.
+    func testLiftSessionSwapToDuplicateIsRejected() async throws {
+        let db = try makeTempDB()
+        let sessions = SessionRepository(dbManager: db)
+        let exs = try await distinctExercises(2, db: db)
+        let routineUUID = try await makeLiftRoutine(exs, name: "Dup Swap Routine", db: db)
+        let session = try await sessions.start(routineID: routineUUID, type: .lift)
+
+        let vm = LiftActiveSessionViewModel(sessionID: session.clientUUID, dbManager: db)
+        await vm.load()
+        // Try to swap card 0 into the exercise already held by card 1.
+        await vm.swapExercise(in: vm.cards[0], to: exs[1])
+
+        XCTAssertEqual(vm.cards[0].exercise.id, exs[0].id, "Duplicate swap must be a no-op")
+        XCTAssertNotNil(vm.errorMessage, "A duplicate swap must surface an error message")
+    }
+
+    /// Mixed session: deleteBlock removes the lift block and its sets.
+    func testMixedSessionDeleteBlockRemovesBlockAndSets() async throws {
+        let db = try makeTempDB()
+        let sessions = SessionRepository(dbManager: db)
+        let routineRepo = RoutineRepository(dbManager: db)
+        let exs = try await distinctExercises(2, db: db)
+        let runTemplateID = try await anyRunTemplateID(db)
+
+        let now = Date()
+        let routineUUID = UUID()
+        let routine = Routine(id: 0, clientUUID: routineUUID, name: "Mixed Delete Routine",
+                              type: .mixed, sortOrder: 1, createdAt: now, updatedAt: now, deletedAt: nil)
+        let res = exs.enumerated().map { i, ex in
+            RoutineExercise(id: 0, clientUUID: UUID(), routineID: 0, exerciseID: ex.id,
+                            sortOrder: i + 1, targetSets: 1, targetRepMin: 5, targetRepMax: 5,
+                            targetRPE: nil, targetDurationSecsMin: nil, targetDurationSecsMax: nil,
+                            notes: nil, updatedAt: now)
+        }
+        let rr = RoutineRun(id: 0, clientUUID: UUID(), routineID: 0, runTemplateID: runTemplateID,
+                            sortOrder: 1, notes: nil, updatedAt: now)
+        try await routineRepo.create(routine, exerciseEntries: res, runEntries: [rr])
+        let session = try await sessions.start(routineID: routineUUID, type: .mixed)
+
+        let vm = MixedActiveSessionViewModel(sessionID: session.clientUUID, dbManager: db)
+        await vm.load()
+        let liftBlocks = vm.blocks.filter { $0.kind == .lift }
+        XCTAssertEqual(liftBlocks.count, 2, "Precondition: 2 lift blocks")
+
+        let target = liftBlocks[0]
+        target.rows[0].weightText = "60"; target.rows[0].repsText = "5"
+        await vm.markLiftBlockDone(target)
+
+        await vm.deleteBlock(target)
+
+        XCTAssertFalse(vm.blocks.contains { $0.id == target.id }, "Deleted block must be gone")
+        let deletedSets = try await countRows(db,
+            sql: "SELECT COUNT(*) FROM session_set WHERE session_id = \(session.id) AND exercise_id = \(exs[0].id);")
+        XCTAssertEqual(deletedSets, 0, "Deleted block's sets must be removed")
+    }
+
+    /// Mixed session: swapExercise replaces the lift block in place.
+    func testMixedSessionSwapExerciseReplacesBlock() async throws {
+        let db = try makeTempDB()
+        let sessions = SessionRepository(dbManager: db)
+        let exs = try await distinctExercises(2, db: db)
+        // Mixed routine with only exs[0] as a lift + one run.
+        let routineRepo = RoutineRepository(dbManager: db)
+        let runTemplateID = try await anyRunTemplateID(db)
+        let now = Date()
+        let routineUUID = UUID()
+        let routine = Routine(id: 0, clientUUID: routineUUID, name: "Mixed Swap Routine",
+                              type: .mixed, sortOrder: 1, createdAt: now, updatedAt: now, deletedAt: nil)
+        let re = RoutineExercise(id: 0, clientUUID: UUID(), routineID: 0, exerciseID: exs[0].id,
+                                 sortOrder: 1, targetSets: 1, targetRepMin: 5, targetRepMax: 5,
+                                 targetRPE: nil, targetDurationSecsMin: nil, targetDurationSecsMax: nil,
+                                 notes: nil, updatedAt: now)
+        let rr = RoutineRun(id: 0, clientUUID: UUID(), routineID: 0, runTemplateID: runTemplateID,
+                            sortOrder: 1, notes: nil, updatedAt: now)
+        try await routineRepo.create(routine, exerciseEntries: [re], runEntries: [rr])
+        let session = try await sessions.start(routineID: routineUUID, type: .mixed)
+
+        let vm = MixedActiveSessionViewModel(sessionID: session.clientUUID, dbManager: db)
+        await vm.load()
+        let liftBlock = try XCTUnwrap(vm.blocks.first { $0.kind == .lift })
+        liftBlock.rows[0].weightText = "80"; liftBlock.rows[0].repsText = "5"
+        await vm.markLiftBlockDone(liftBlock)
+
+        await vm.swapExercise(in: liftBlock, to: exs[1])
+
+        let newLift = try XCTUnwrap(vm.blocks.first { $0.kind == .lift })
+        XCTAssertEqual(newLift.exercise?.id, exs[1].id, "Lift block must now show the new exercise")
+        let oldSets = try await countRows(db,
+            sql: "SELECT COUNT(*) FROM session_set WHERE session_id = \(session.id) AND exercise_id = \(exs[0].id);")
+        XCTAssertEqual(oldSets, 0, "Swapped-out exercise's sets must be discarded")
+        // Run block must still be present.
+        XCTAssertTrue(vm.blocks.contains { $0.kind == .run }, "Swap must not affect run blocks")
     }
 }
 

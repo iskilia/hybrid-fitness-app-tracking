@@ -149,39 +149,7 @@ final class MixedActiveSessionViewModel {
             var liftBlocks: [MixedBlockState] = []
             for re in routineExercises {
                 guard let exercise = exerciseByID[re.exerciseID] else { continue }
-
-                // Previous best per row
-                let topSets = try await sessionSetRepo.topSetPerSession(exerciseID: exercise.clientUUID, limit: 1)
-                var prevDisplay: String? = nil
-                if let top = topSets.first {
-                    let wStr = top.weightKg.truncatingRemainder(dividingBy: 1) == 0
-                        ? "\(Int(top.weightKg))" : String(format: "%.1f", top.weightKg)
-                    prevDisplay = "\(wStr) × \(top.reps ?? 0)"
-                }
-
-                // Build rows — one per targetSets (or 1)
-                let count = re.targetSets ?? 1
-                var rows: [SetRowState] = []
-                var prevDisplays: [String?] = []
-                let targetWeight: Double? = topSets.first?.weightKg
-                let targetReps: Int? = re.targetRepMin
-                for _ in 0..<count {
-                    rows.append(SetRowState(
-                        weight: targetWeight,
-                        reps: targetReps,
-                        distanceUnit: du
-                    ))
-                    prevDisplays.append(prevDisplay)
-                }
-
-                liftBlocks.append(MixedBlockState(
-                    kind: .lift,
-                    sortOrder: re.sortOrder,
-                    exercise: exercise,
-                    routineExercise: re,
-                    rows: rows,
-                    prevDisplays: prevDisplays
-                ))
+                liftBlocks.append(try await makeLiftBlock(exercise: exercise, routineExercise: re))
             }
 
             // --- Build run blocks ---
@@ -213,6 +181,79 @@ final class MixedActiveSessionViewModel {
             touchStartForActiveRun()
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Builds a lift block: previous-best hint + one row per target set.
+    /// Shared by `load()` and mid-session exercise swaps.
+    private func makeLiftBlock(exercise: Exercise, routineExercise re: RoutineExercise) async throws -> MixedBlockState {
+        let du = distanceUnit
+        let topSets = try await sessionSetRepo.topSetPerSession(exerciseID: exercise.clientUUID, limit: 1)
+        var prevDisplay: String? = nil
+        if let top = topSets.first {
+            let wStr = top.weightKg.truncatingRemainder(dividingBy: 1) == 0
+                ? "\(Int(top.weightKg))" : String(format: "%.1f", top.weightKg)
+            prevDisplay = "\(wStr) × \(top.reps ?? 0)"
+        }
+
+        let count = re.targetSets ?? 1
+        var rows: [SetRowState] = []
+        var prevDisplays: [String?] = []
+        let targetWeight: Double? = topSets.first?.weightKg
+        let targetReps: Int? = re.targetRepMin
+        for _ in 0..<count {
+            rows.append(SetRowState(weight: targetWeight, reps: targetReps, distanceUnit: du))
+            prevDisplays.append(prevDisplay)
+        }
+
+        return MixedBlockState(
+            kind: .lift,
+            sortOrder: re.sortOrder,
+            exercise: exercise,
+            routineExercise: re,
+            rows: rows,
+            prevDisplays: prevDisplays
+        )
+    }
+
+    // MARK: - Mid-session edit (delete / swap exercise)
+
+    /// Removes a lift block from the in-progress session and deletes its persisted sets.
+    func deleteBlock(_ block: MixedBlockState) async {
+        guard block.kind == .lift, let exercise = block.exercise else { return }
+        do {
+            try await sessionSetRepo.deleteAll(sessionID: sessionID, exerciseID: exercise.clientUUID)
+        } catch {
+            errorMessage = "Couldn't remove exercise: \(error.userMessage)"
+            return
+        }
+        blocks.removeAll { $0.id == block.id }
+        if activeBlockID == block.id { activeBlockID = blocks.first(where: { !$0.isDone })?.id }
+    }
+
+    /// Swaps the exercise in a lift block for `newExercise`, discarding logged sets.
+    func swapExercise(in block: MixedBlockState, to newExercise: Exercise) async {
+        guard block.kind == .lift, let oldExercise = block.exercise,
+              let index = blocks.firstIndex(where: { $0.id == block.id }) else { return }
+        guard newExercise.clientUUID != oldExercise.clientUUID else { return }
+        guard !blocks.contains(where: { $0.kind == .lift && $0.exercise?.clientUUID == newExercise.clientUUID }) else {
+            errorMessage = "\(newExercise.name) is already in this session."
+            return
+        }
+        do {
+            try await sessionSetRepo.deleteAll(sessionID: sessionID, exerciseID: oldExercise.clientUUID)
+            let transient = RoutineExercise(
+                id: 0, clientUUID: UUID(), routineID: 0,
+                exerciseID: newExercise.id, sortOrder: block.sortOrder,
+                targetSets: nil, targetRepMin: nil, targetRepMax: nil,
+                targetRPE: nil, targetDurationSecsMin: nil, targetDurationSecsMax: nil,
+                notes: nil, updatedAt: Date()
+            )
+            let newBlock = try await makeLiftBlock(exercise: newExercise, routineExercise: transient)
+            blocks[index] = newBlock
+            if activeBlockID == block.id { activeBlockID = newBlock.id }
+        } catch {
+            errorMessage = "Couldn't change exercise: \(error.userMessage)"
         }
     }
 
