@@ -118,7 +118,8 @@ private extension RoutineBuilderView {
                     primaryMuscle: nil,
                     trailingContent: canReorder
                         ? AnyView(Image(systemName: "line.3.horizontal")
-                            .foregroundStyle(AppColor.textSecondary))
+                            .foregroundStyle(AppColor.textSecondary)
+                            .accessibilityLabel("Drag to reorder"))
                         : nil
                 )
                 HStack(spacing: AppSpacing.md) {

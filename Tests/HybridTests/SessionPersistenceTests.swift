@@ -649,6 +649,14 @@ final class SessionPersistenceTests: XCTestCase {
         let oldSets = try await countRows(db,
             sql: "SELECT COUNT(*) FROM session_set WHERE session_id = \(session.id) AND exercise_id = \(exs[0].id);")
         XCTAssertEqual(oldSets, 0, "Swapped-out exercise's sets must be discarded")
+
+        // Logging a set for the swapped-IN exercise must persist (validates the
+        // transient RoutineExercise(routineID: 0) doesn't break the write path).
+        vm.cards[0].rows[0].weightText = "90"; vm.cards[0].rows[0].repsText = "3"
+        await vm.persistAllRows()
+        let newSets = try await countRows(db,
+            sql: "SELECT COUNT(*) FROM session_set WHERE session_id = \(session.id) AND exercise_id = \(exs[1].id);")
+        XCTAssertGreaterThan(newSets, 0, "Sets logged for the swapped-in exercise must persist")
     }
 
     /// Lift session: swapping to an exercise already in the session is rejected.

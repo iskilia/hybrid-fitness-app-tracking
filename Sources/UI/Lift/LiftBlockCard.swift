@@ -111,6 +111,7 @@ struct LiftBlockCard: View {
                 .frame(width: 28, height: 28)
                 .contentShape(Rectangle())
         }
+        .accessibilityLabel("Edit exercise")
     }
 
     private var statusNode: some View {

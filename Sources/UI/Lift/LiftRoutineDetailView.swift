@@ -33,12 +33,11 @@ struct LiftRoutineDetailView: View {
                     .foregroundStyle(AppColor.accent)
             }
         }
-        // onAppear (not task) so returning from the editor reloads the edited routine.
-        .onAppear {
-            Task {
-                await viewModel.load(routineID: routineID)
-                await viewModel.loadLastExecution(routineID: routineID)
-            }
+        // Keyed on the nav path so the load re-runs when returning from the editor
+        // (path shrinks on pop), while keeping .task's automatic cancellation.
+        .task(id: router?.path) {
+            await viewModel.load(routineID: routineID)
+            await viewModel.loadLastExecution(routineID: routineID)
         }
     }
 }
