@@ -85,9 +85,14 @@ private extension RoutineBuilderView {
                         .textCase(.uppercase)
                 }
             }
-            TextField("Routine name", text: $viewModel.name)
+            TextField("Name your routine", text: $viewModel.name)
                 .font(AppFont.displayMedium)
                 .foregroundStyle(AppColor.textPrimary)
+            if viewModel.name.trimmingCharacters(in: .whitespaces).isEmpty {
+                Text("Give your routine a name to continue.")
+                    .font(AppFont.caption)
+                    .foregroundStyle(AppColor.accent)
+            }
         }
         .padding(.horizontal, AppSpacing.lg)
         .padding(.top, AppSpacing.lg)
@@ -136,18 +141,22 @@ private extension RoutineBuilderView {
     }
 
     func reorderControls(_ entry: ExerciseEntry, index: Int) -> some View {
-        VStack(spacing: AppSpacing.xs) {
+        VStack(spacing: 0) {
             Button { viewModel.moveUp(entry) } label: {
                 Image(systemName: "chevron.up")
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
             }
             .disabled(index == 0)
-            .accessibilityLabel("Move up")
+            .accessibilityLabel("Move \(entry.exercise.name) up")
 
             Button { viewModel.moveDown(entry) } label: {
                 Image(systemName: "chevron.down")
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
             }
             .disabled(index == viewModel.entries.count - 1)
-            .accessibilityLabel("Move down")
+            .accessibilityLabel("Move \(entry.exercise.name) down")
         }
         .font(AppFont.caption)
         .foregroundStyle(AppColor.accent)

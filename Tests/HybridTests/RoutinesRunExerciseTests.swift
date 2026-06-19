@@ -1002,6 +1002,14 @@ final class RoutinesRunExerciseTests: XCTestCase {
             vm.moveUp(vm.entries[1])
             XCTAssertEqual(vm.entries[0].exercise.id, exs[2].id, "Repeated moveUp must reach the front")
 
+            // moveDown advances an entry one slot. Order is now [exs2, exs0, exs1];
+            // moving the first down swaps it with exs0.
+            vm.moveDown(vm.entries[0])
+            XCTAssertEqual(vm.entries[1].exercise.id, exs[2].id, "moveDown must advance the entry one slot")
+            XCTAssertEqual(vm.entries[0].exercise.id, exs[0].id, "moveDown must swap with the entry below")
+            // Restore exs2 to the front for the clamp checks below.
+            vm.moveUp(vm.entries[1])
+
             // moveUp on the first entry is a no-op (clamped).
             vm.moveUp(vm.entries[0])
             XCTAssertEqual(vm.entries[0].exercise.id, exs[2].id, "moveUp on first entry must be a no-op")
