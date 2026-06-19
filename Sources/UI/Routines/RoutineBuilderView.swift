@@ -85,9 +85,14 @@ private extension RoutineBuilderView {
                         .textCase(.uppercase)
                 }
             }
-            TextField("Routine name", text: $viewModel.name)
+            TextField("Name your routine", text: $viewModel.name)
                 .font(AppFont.displayMedium)
                 .foregroundStyle(AppColor.textPrimary)
+            if viewModel.name.trimmingCharacters(in: .whitespaces).isEmpty {
+                Text("Give your routine a name to continue.")
+                    .font(AppFont.caption)
+                    .foregroundStyle(AppColor.accent)
+            }
         }
         .padding(.horizontal, AppSpacing.lg)
         .padding(.top, AppSpacing.lg)
@@ -98,8 +103,8 @@ private extension RoutineBuilderView {
     var exerciseListSection: some View {
         let canReorder = viewModel.entries.count >= 2
         VStack(spacing: 0) {
-            ForEach(viewModel.entries) { entry in
-                exerciseEntryRow(entry, canReorder: canReorder)
+            ForEach(Array(viewModel.entries.enumerated()), id: \.element.id) { index, entry in
+                exerciseEntryRow(entry, index: index, canReorder: canReorder)
                 Divider()
                     .background(AppColor.divider)
                     .padding(.leading, AppSpacing.lg + 56 + AppSpacing.md)
@@ -107,19 +112,16 @@ private extension RoutineBuilderView {
         }
     }
 
-    @ViewBuilder
-    func exerciseEntryRow(_ entry: ExerciseEntry, canReorder: Bool) -> some View {
+    func exerciseEntryRow(_ entry: ExerciseEntry, index: Int, canReorder: Bool) -> some View {
         @Bindable var bindableEntry = entry
-        let row = SwipeToDeleteRow(onDelete: { viewModel.remove(entry) }) {
+        return SwipeToDeleteRow(onDelete: { viewModel.remove(entry) }) {
             VStack(spacing: 0) {
                 ExerciseRow(
                     exercise: entry.exercise,
                     equipment: nil,
                     primaryMuscle: nil,
                     trailingContent: canReorder
-                        ? AnyView(Image(systemName: "line.3.horizontal")
-                            .foregroundStyle(AppColor.textSecondary)
-                            .accessibilityLabel("Drag to reorder"))
+                        ? AnyView(reorderControls(entry, index: index))
                         : nil
                 )
                 HStack(spacing: AppSpacing.md) {
@@ -135,18 +137,29 @@ private extension RoutineBuilderView {
                     .padding(.bottom, AppSpacing.sm)
             }
         }
+    }
 
-        if canReorder {
-            row
-                .draggable(entry.id.uuidString)
-                .dropDestination(for: String.self) { items, _ in
-                    guard let droppedID = items.first.flatMap({ UUID(uuidString: $0) }) else { return false }
-                    viewModel.moveEntry(fromID: droppedID, toID: entry.id)
-                    return true
-                }
-        } else {
-            row
+    func reorderControls(_ entry: ExerciseEntry, index: Int) -> some View {
+        VStack(spacing: 0) {
+            Button { viewModel.moveUp(entry) } label: {
+                Image(systemName: "chevron.up")
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .disabled(index == 0)
+            .accessibilityLabel("Move \(entry.exercise.name) up")
+
+            Button { viewModel.moveDown(entry) } label: {
+                Image(systemName: "chevron.down")
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .disabled(index == viewModel.entries.count - 1)
+            .accessibilityLabel("Move \(entry.exercise.name) down")
         }
+        .font(AppFont.caption)
+        .foregroundStyle(AppColor.accent)
+        .buttonStyle(.plain)
     }
 
     func notesField(text: Binding<String>) -> some View {
