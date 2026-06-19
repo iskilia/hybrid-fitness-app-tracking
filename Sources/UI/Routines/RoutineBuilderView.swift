@@ -103,8 +103,8 @@ private extension RoutineBuilderView {
     var exerciseListSection: some View {
         let canReorder = viewModel.entries.count >= 2
         VStack(spacing: 0) {
-            ForEach(viewModel.entries) { entry in
-                exerciseEntryRow(entry, canReorder: canReorder)
+            ForEach(Array(viewModel.entries.enumerated()), id: \.element.id) { index, entry in
+                exerciseEntryRow(entry, index: index, canReorder: canReorder)
                 Divider()
                     .background(AppColor.divider)
                     .padding(.leading, AppSpacing.lg + 56 + AppSpacing.md)
@@ -112,9 +112,8 @@ private extension RoutineBuilderView {
         }
     }
 
-    func exerciseEntryRow(_ entry: ExerciseEntry, canReorder: Bool) -> some View {
+    func exerciseEntryRow(_ entry: ExerciseEntry, index: Int, canReorder: Bool) -> some View {
         @Bindable var bindableEntry = entry
-        let index = viewModel.entries.firstIndex { $0.id == entry.id } ?? 0
         return SwipeToDeleteRow(onDelete: { viewModel.remove(entry) }) {
             VStack(spacing: 0) {
                 ExerciseRow(
