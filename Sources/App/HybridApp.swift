@@ -11,8 +11,13 @@ struct HybridApp: App {
     // now: on failure `manager` is nil and we surface the underlying error instead of
     // masking it with disappearing data.
     private let bootstrap: DatabaseBootstrap = {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let url = docs.appendingPathComponent("Hybrid.sqlite")
+        // Library/Application Support is Apple's home for a private SQLite store the user
+        // never opens directly (Documents is for user-facing files / file sharing). The
+        // "Hybrid" subdirectory is internal — DatabaseManager creates it on first launch.
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let url = appSupport
+            .appendingPathComponent("Hybrid", isDirectory: true)
+            .appendingPathComponent("Hybrid.sqlite")
         do {
             return DatabaseBootstrap(manager: try DatabaseManager(url: url), errorMessage: nil)
         } catch {
