@@ -29,9 +29,15 @@ public actor DatabaseManager {
                 withIntermediateDirectories: true
             )
         }
-        let path = url?.path ?? ":memory:"
+        // Resolve symlinks in the *directory* before opening. SQLITE_OPEN_NOFOLLOW
+        // (below) makes Apple's libsqlite3 reject a symlink anywhere in the path, and
+        // on iOS the sandbox container lives under /var — a symlink to /private/var —
+        // so the open would fail with SQLITE_CANTOPEN. We canonicalize the directory
+        // (which exists after the createDirectory above) and leave the file's own last
+        // component unresolved, so NOFOLLOW still rejects a symlinked database file.
+        let path = url.map(Self.resolvingDirectorySymlinks)?.path ?? ":memory:"
         var ptr: OpaquePointer?
-        // NOFOLLOW: refuse to open through a symlink. PRIVATECACHE: no shared page cache.
+        // NOFOLLOW: refuse to open through a symlinked DB file. PRIVATECACHE: no shared page cache.
         let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX
                   | SQLITE_OPEN_NOFOLLOW | SQLITE_OPEN_PRIVATECACHE
         guard sqlite3_open_v2(path, &ptr, flags, nil) == SQLITE_OK, let opened = ptr else {
@@ -44,6 +50,20 @@ public actor DatabaseManager {
         try migrate(opened)
         try seedIfEmpty(opened)
         if let url { Self.protect(url) }
+    }
+
+    // MARK: - Path canonicalization
+
+    /// Returns `url` with its parent directory's symlinks fully resolved (via realpath,
+    /// which deterministically expands /var → /private/var, unlike resolvingSymlinksInPath
+    /// which preserves the /var form). The file's last component is reattached unresolved.
+    /// Falls back to the original URL if the directory can't be resolved.
+    private static func resolvingDirectorySymlinks(_ url: URL) -> URL {
+        let dir = url.deletingLastPathComponent()
+        guard let resolved = realpath(dir.path, nil) else { return url }
+        defer { free(resolved) }
+        let realDir = URL(fileURLWithPath: String(cString: resolved), isDirectory: true)
+        return realDir.appendingPathComponent(url.lastPathComponent)
     }
 
     // MARK: - Hardening (F3 — keep SQL inside this one file)
