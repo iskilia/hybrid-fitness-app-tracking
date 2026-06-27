@@ -1,6 +1,10 @@
 import SwiftUI
 
 struct RootView: View {
+    /// Reason the persistent database could not open, if it failed at launch. Shown on
+    /// the unavailable screen so an on-device open failure reports its actual cause.
+    var databaseErrorMessage: String? = nil
+
     @State private var router = Router()
     // Owned in @State so it survives RootView body re-evaluations (every push/pop
     // mutates router.path, which re-runs body). Building it inline here would mint a
@@ -20,8 +24,17 @@ struct RootView: View {
                                 routeView(route)
                             }
                     } else if dbManager == nil {
-                        Text("Database unavailable")
-                            .foregroundStyle(AppColor.textSecondary)
+                        VStack(spacing: 8) {
+                            Text("Database unavailable")
+                                .foregroundStyle(AppColor.textSecondary)
+                            if let databaseErrorMessage {
+                                Text(databaseErrorMessage)
+                                    .font(.footnote)
+                                    .foregroundStyle(AppColor.textSecondary)
+                                    .multilineTextAlignment(.center)
+                            }
+                        }
+                        .padding()
                     }
                 }
             }
