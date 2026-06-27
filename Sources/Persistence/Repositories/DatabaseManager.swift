@@ -19,6 +19,16 @@ public actor DatabaseManager {
     /// Opens the SQLite database at `url` (pass `nil` for `:memory:`).
     public init(url: URL?) throws {
         self.dbFileURL = url
+        // SQLITE_OPEN_CREATE makes the database *file* but never its parent *directory*.
+        // On a clean install the app's Documents directory may not exist yet, so opening
+        // Documents/Hybrid.sqlite fails with SQLITE_CANTOPEN ("unable to open database
+        // file"). Create the containing directory first (idempotent for an existing one).
+        if let url {
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+        }
         let path = url?.path ?? ":memory:"
         var ptr: OpaquePointer?
         // NOFOLLOW: refuse to open through a symlink. PRIVATECACHE: no shared page cache.
