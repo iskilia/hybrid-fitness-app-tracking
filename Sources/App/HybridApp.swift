@@ -21,7 +21,9 @@ struct HybridApp: App {
         do {
             return DatabaseBootstrap(manager: try DatabaseManager(url: url), errorMessage: nil)
         } catch {
-            return DatabaseBootstrap(manager: nil, errorMessage: DatabaseBootstrap.describe(error))
+            let message = DatabaseBootstrap.diagnose(error, url: url)
+            NSLog("[Hybrid] database bootstrap failed:\n%@", message)
+            return DatabaseBootstrap(manager: nil, errorMessage: message)
         }
     }()
 
@@ -42,10 +44,26 @@ private struct DatabaseBootstrap {
     let manager: DatabaseManager?
     let errorMessage: String?
 
-    /// Unwraps the SQLite text from `DatabaseError.openFailed` so the surfaced message
-    /// is the raw cause (e.g. "unable to open database file") rather than a Swift dump.
-    static func describe(_ error: Error) -> String {
-        if case let DatabaseError.openFailed(message) = error { return message }
-        return String(describing: error)
+    /// Builds a diagnostic message naming the failing step, the raw cause and the
+    /// filesystem state, so an on-device failure reports exactly where it broke rather
+    /// than a bare "unable to open database file" we then have to guess about.
+    static func diagnose(_ error: Error, url: URL) -> String {
+        let fm = FileManager.default
+        let dir = url.deletingLastPathComponent()
+
+        let cause: String
+        if case let DatabaseError.openFailed(message) = error {
+            // Reached sqlite3_open_v2 — directory creation already succeeded.
+            cause = "open: \(message)"
+        } else {
+            // Threw before the open — almost certainly createDirectory.
+            cause = "\((error as NSError).domain) \((error as NSError).code): \((error as NSError).localizedDescription)"
+        }
+
+        return """
+        \(cause)
+        path: \(url.path)
+        dir exists: \(fm.fileExists(atPath: dir.path)) · writable: \(fm.isWritableFile(atPath: dir.path))
+        """
     }
 }
